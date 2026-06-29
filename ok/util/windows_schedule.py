@@ -14,6 +14,7 @@ import logging
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -215,6 +216,11 @@ class WindowsScheduleManager:
 
     def _init_com_service(self):
         """初始化 COM 服务"""
+        if sys.platform != 'win32':
+            logger.info("Windows Task Scheduler not available on non-Windows platforms")
+            self.SCHEDULE_SERVICE = None
+            self.SCHEDULE_FOLDER = None
+            return
         try:
             import win32com.client
 
@@ -463,6 +469,8 @@ class WindowsScheduleManager:
     def _query_tasks_via_schtasks(self) -> List[ScheduleTaskInfo]:
         """通过 schtasks 命令查询任务（降级方案）"""
         tasks = []
+        if sys.platform != 'win32':
+            return tasks
         try:
             # 使用 CSV 格式输出
             cmd = [

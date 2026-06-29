@@ -1,4 +1,5 @@
 import os
+import sys
 import threading
 
 import pyappify
@@ -180,9 +181,9 @@ class MainWindow(FluentWindow):
         self.update_imported_tabs()
         communicate.task_list_updated.connect(self.update_imported_tabs)
 
-        # 添加计划任务Tab
+        # 添加计划任务Tab (仅 Windows 平台)
         any_support_schedule = any(task.support_schedule_task for task in visible_onetime_tasks)
-        if any_support_schedule:
+        if any_support_schedule and sys.platform == 'win32':
             from ok.gui.tasks.ScheduleTaskTab import ScheduleTaskTab
             self.schedule_tab = ScheduleTaskTab(config=self.config)
             self.addSubInterface(self.schedule_tab, FluentIcon.CALENDAR, self.tr('Schedule'),
@@ -406,7 +407,7 @@ class MainWindow(FluentWindow):
                        self.window())
         if w.exec():
             logger.info('restart_admin Yes button is pressed')
-            thread = threading.Thread(target=restart_as_admin)
+            thread = threading.Thread(target=restart_as_admin, daemon=True)
             thread.start()
             self.app.quit()
 
@@ -674,17 +675,13 @@ class MainWindow(FluentWindow):
             logger.info("Window closed exit_event.is_set")
             event.accept()
             return
-        else:
-            logger.info(f"Window closed exit_event.is not set {self.do_not_quit}")
-            to_tray = self.basic_global_config.get('Minimize Window to System Tray when Closing')
-            if to_tray:
-                event.ignore()
-                self.hide()
-                return
-            if not self.do_not_quit:
-                self.exit_event.set()
-                self.executor.destroy()
-            event.accept()
-            if not self.do_not_quit:
-                pyappify.kill_pyappify()
-                QApplication.instance().exit()
+        logger.info(f"Window closed exit_event.is not set {self.do_not_quit}")
+        to_tray = self.basic_global_config.get('Minimize Window to System Tray when Closing')
+        if to_tray:
+            event.ignore()
+            self.hide()
+            return
+        event.accept()
+        if not self.do_not_quit:
+            pyappify.kill_pyappify()
+            self.app.quit()

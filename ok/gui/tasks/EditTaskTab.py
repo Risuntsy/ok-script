@@ -733,7 +733,7 @@ class EditTaskTab(QWidget):
                 new_lines.append(indentation + line.rstrip())
             new_lines.extend(lines[run_end:])
             
-            cursor = self.editor.textCursor()
+            self.editor.textCursor()
             v_scroll = self.editor.verticalScrollBar().value()
             
             self.editor.setPlainText("\n".join(new_lines))

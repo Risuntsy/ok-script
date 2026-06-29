@@ -309,7 +309,13 @@ class TaskExecutor:
         if timeout <= 0:
             return
         if self.debug_mode:
-            time.sleep(timeout)
+            end_time = time.time() + timeout
+            while time.time() < end_time:
+                self.check_enabled(check_pause=False)
+                if self.exit_event.is_set():
+                    logger.info("sleep Exit event set. Exiting early.")
+                    sys.exit(0)
+                time.sleep(min(0.05, max(0, end_time - time.time())))
             return
         self.pause_end_time = time.time() + timeout
         task = None
@@ -396,7 +402,7 @@ class TaskExecutor:
     def start(self):
         with self.lock:
             if self.thread is None:
-                self.thread = threading.Thread(target=self.execute, name="TaskExecutor")
+                self.thread = threading.Thread(target=self.execute, name="TaskExecutor", daemon=True)
                 self.thread.start()
             if self.paused:
                 self.paused = False
@@ -564,11 +570,13 @@ class TaskExecutor:
                         self.reset_scene()
                         continue
                 else:
-                    prevent_sleeping(True)
+                    if sys.platform == 'win32':
+                        prevent_sleeping(True)
                     logger.debug(f'start running onetime_task {task.name}')
                     task.run()
                     logger.debug(f'end running onetime_task {task.name}')
-                    prevent_sleeping(False)
+                    if sys.platform == 'win32':
+                        prevent_sleeping(False)
                     task.disable()
                     communicate.task_done.emit(task)
                     if task.exit_after_task or task.config.get('Exit After Task'):

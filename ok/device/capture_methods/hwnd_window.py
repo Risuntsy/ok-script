@@ -1,10 +1,15 @@
 import threading
 import time
 
-import win32api
-import win32con
-import win32gui
-import win32process
+import sys
+
+if sys.platform == "win32":
+    import win32api
+    import win32con
+    import win32gui
+    import win32process
+else:
+    win32api = win32con = win32gui = win32process = None
 
 from ok.gui.Communicate import communicate
 from ok.gui.util.Alert import alert_info
@@ -68,8 +73,11 @@ class HwndWindow:
         self.global_config = global_config
         self.mute_option.validator = self.validate_mute_config
         self.update_window(title, exe_name, frame_width, frame_height, player_id, hwnd_class, top_hwnd_class)
-        self.thread = threading.Thread(target=self.update_window_size, name="update_window_size")
-        self.thread.start()
+        if sys.platform == 'win32':
+            self.thread = threading.Thread(target=self.update_window_size, name="update_window_size", daemon=True)
+            self.thread.start()
+        else:
+            self.thread = None
 
     def validate_mute_config(self, key, value):
         if key == 'Mute Game while in Background' and self.hwnd:
@@ -83,6 +91,8 @@ class HwndWindow:
 
     def stop(self):
         self.stop_event.set()
+        if self.thread is not None:
+            self.thread.join(timeout=1.0)
 
     def _front_hwnd_candidates(self):
         return list(dict.fromkeys(hwnd for hwnd in (self.top_hwnd, self.hwnd) if hwnd))
@@ -380,6 +390,8 @@ def check_pos(x, y, width, height, monitors_bounds):
 
 def get_monitors_bounds():
     monitors_bounds = []
+    if win32api is None:
+        return monitors_bounds
     monitors = win32api.EnumDisplayMonitors()
     for monitor in monitors:
         monitor_info = win32api.GetMonitorInfo(monitor[0])

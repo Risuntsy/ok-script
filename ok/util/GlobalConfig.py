@@ -31,13 +31,33 @@ _basic_options_default = {
     'Trigger Interval': 1,
     'Start/Stop': 'F9',
     KILL_LAUNCHER_AFTER_START: True,
-    'Launch with DX11': False
+    'Launch with DX11': False,
+    'Enable Operation Capture Log': False,
+    'Operation Capture Log Folder': 'operation_logs',
+    'Operation Capture Log Retention Days': 7,
+    'Operation Capture Log After Delay': 0.2
 }
 _basic_options_type = {'Use DirectML': {'type': "drop_down", 'options': ['Auto', 'Yes', 'No']},
                        'Start/Stop': {'type': "drop_down", 'options': ['None', 'F9', 'F10', 'F11', 'F12']}}
 _basic_options_description = {'Use DirectML': 'Use GPU to Improve Performance',
                               'Start/Stop': 'HotKey',
-                              'Trigger Interval': 'Increase Delay between Trigger Tasks to Reduce CPU/GPU Usage(Milliseconds)'}
+                              'Trigger Interval': 'Increase Delay between Trigger Tasks to Reduce CPU/GPU Usage(Milliseconds)',
+                              'Enable Operation Capture Log': 'Save before/after screenshots and metadata for task operations',
+                              'Operation Capture Log Folder': 'Folder used for operation capture sessions',
+                              'Operation Capture Log Retention Days': 'Delete operation capture sessions older than this many days',
+                              'Operation Capture Log After Delay': 'Seconds to wait before taking the after-operation screenshot'}
+
+import sys
+if sys.platform == 'linux':
+    _basic_options_default.pop('Launch with DX11', None)
+    _basic_options_default.pop('Use DirectML', None)
+    _basic_options_default.pop('Mute Game while in Background', None)
+    _basic_options_default.pop('Auto Start Game When App Starts', None)
+    _basic_options_default.pop('Exit App when Game Exits', None)
+    _basic_options_default.pop('Kill Launcher after Start', None)
+    _basic_options_default.pop('Auto Resize Game Window', None)
+    _basic_options_type.pop('Use DirectML', None)
+    _basic_options_description.pop('Use DirectML', None)
 _blur_options_default = {'Enable Blur': False, 'Blur Algorithm': 'Inpaint', 'Blur Interval': 1}
 _blur_options_type = {
     'Enable Blur': {'sub_configs': {True: ['Blur Algorithm', 'Blur Interval']}},
