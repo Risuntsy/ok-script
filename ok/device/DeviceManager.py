@@ -336,7 +336,11 @@ class DeviceManager:
             logger.info(f"update_wlroots_device using wayland desktop: {wl_device['nick']} resolution: {wl_device['resolution']}")
             self.device_dict[imei] = wl_device
         except Exception as e:
+            for device in self.device_dict.values():
+                if device.get("device") == "wayland":
+                    device["connected"] = False
             logger.error(f'update_wlroots_device error: {e}')
+
     def update_browser_device(self):
         if self.browser_config and windows_graphics_available():
             width, height = self.browser_config.get('resolution', (1280, 720))

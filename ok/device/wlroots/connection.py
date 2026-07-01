@@ -1,4 +1,5 @@
 import os
+import select
 import threading
 from pywayland.client import Display
 from ok.util.logger import Logger
@@ -32,6 +33,7 @@ class WaylandConnection:
         self.socket_name: str = ''       # which socket we are connected to
         self.display: Display = None
         self.screencopy_manager: ZwlrScreencopyManagerV1 = None
+        self.screencopy_version = 0
         self.toplevel_manager: ZwlrForeignToplevelManagerV1 = None
         self.vp_manager: ZwlrVirtualPointerManagerV1 = None
         self.vk_manager: ZwpVirtualKeyboardManagerV1 = None
@@ -104,6 +106,7 @@ class WaylandConnection:
 
     def _reset_globals(self):
         self.screencopy_manager = None
+        self.screencopy_version = 0
         self.toplevel_manager = None
         self.vp_manager = None
         self.vk_manager = None
@@ -119,7 +122,9 @@ class WaylandConnection:
 
     def _on_global(self, registry, name, interface, version):
         if interface == 'zwlr_screencopy_manager_v1':
-            self.screencopy_manager = registry.bind(name, ZwlrScreencopyManagerV1, min(version, 3))
+            self.screencopy_version = min(version, 3)
+            self.screencopy_manager = registry.bind(
+                name, ZwlrScreencopyManagerV1, self.screencopy_version)
         elif interface == 'zwlr_foreign_toplevel_manager_v1':
             self.toplevel_manager = registry.bind(name, ZwlrForeignToplevelManagerV1, min(version, 3))
             self.toplevel_manager.dispatcher['toplevel'] = self._on_toplevel
@@ -210,6 +215,19 @@ class WaylandConnection:
     # Runtime helpers
     # ------------------------------------------------------------------
 
+    def connected(self) -> bool:
+        """Return whether the compositor socket is still usable."""
+        if self.closing or self.display is None:
+            return False
+        try:
+            fd = self.display.get_fd()
+            poller = select.poll()
+            poller.register(fd, select.POLLERR | select.POLLHUP | select.POLLNVAL)
+            return not poller.poll(0)
+        except Exception as e:
+            logger.debug(f'WaylandConnection: connection check failed: {e}')
+            return False
+
     def dispatch(self):
         """Process pending Wayland events. Call regularly from capture thread."""
         if self.closing or self.display is None:
@@ -245,8 +263,14 @@ class WaylandConnection:
         """
         with cls._lock:
             if cls._instance is None:
-                cls._instance = WaylandConnection()
-                cls._instance.connect(socket_name)
+                connection = WaylandConnection()
+                connection.connect(socket_name)
+                cls._instance = connection
+            elif not cls._instance.connected():
+                cls._instance.disconnect()
+                connection = WaylandConnection()
+                connection.connect(socket_name)
+                cls._instance = connection
             elif socket_name and cls._instance.socket_name != socket_name:
                 # User switched socket via GUI — reconnect
                 cls._instance.reconnect(socket_name)

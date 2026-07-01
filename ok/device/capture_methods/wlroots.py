@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 import mmap
 import os
+import select
 from .base import BaseCaptureMethod
 from ok.util.logger import Logger
 from ok.device.wlroots.connection import WaylandConnection
@@ -26,7 +27,7 @@ class WlrootsCaptureMethod(BaseCaptureMethod):
         self._frame_ready = False
 
     def connected(self):
-        return self.connection is not None
+        return self.connection is not None and self.connection.connected()
 
     def get_abs_cords(self, x, y):
         # On wlroots the entire output is captured, coordinates are already in screen space
@@ -35,8 +36,9 @@ class WlrootsCaptureMethod(BaseCaptureMethod):
     def start_or_stop(self):
         try:
             self.connection = WaylandConnection.get()
-            return True
+            return self.connected()
         except Exception as e:
+            self.connection = None
             logger.error(f'WlrootsCaptureMethod: {e}')
             return False
 
@@ -98,6 +100,11 @@ class WlrootsCaptureMethod(BaseCaptureMethod):
         def _on_buffer(frame, format, width, height, stride):
             if width != self._width or height != self._height or stride != self._stride:
                 self._create_buffer(width, height, stride, format)
+            if self.connection.screencopy_version < 3:
+                frame.copy(self._buffer)
+                self.connection.display.flush()
+
+        def _on_buffer_done(frame):
             frame.copy(self._buffer)
             self.connection.display.flush()
 
@@ -110,6 +117,7 @@ class WlrootsCaptureMethod(BaseCaptureMethod):
             frame.destroy()
 
         frame.dispatcher['buffer'] = _on_buffer
+        frame.dispatcher['buffer_done'] = _on_buffer_done
         frame.dispatcher['ready'] = _on_ready
         frame.dispatcher['failed'] = _on_failed
 
@@ -119,11 +127,18 @@ class WlrootsCaptureMethod(BaseCaptureMethod):
         try:
             import time
             start_time = time.monotonic()
-            while not self._frame_ready and (time.monotonic() - start_time) < 2.0:
+            deadline = start_time + 2.0
+            while not self._frame_ready and time.monotonic() < deadline:
                 if self.exit_event and self.exit_event.is_set():
                     return None
-                self.connection.display.dispatch(block=False)
-                time.sleep(0.005)
+                display = self.connection.display
+                timeout = min(0.05, max(0, deadline - time.monotonic()))
+                readable, _, exceptional = select.select(
+                    [display.get_fd()], [], [display.get_fd()], timeout)
+                if exceptional:
+                    raise ConnectionError("Wayland display connection failed")
+                if readable:
+                    display.dispatch(block=True)
         except Exception as e:
             if self.exit_event and self.exit_event.is_set() and 'Cannot find display' in str(e):
                 logger.debug(f"Wayland dispatch stopped during shutdown: {e}")
