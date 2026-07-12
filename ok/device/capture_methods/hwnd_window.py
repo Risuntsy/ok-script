@@ -304,7 +304,7 @@ class HwndWindow:
                     if self.global_config.get_config('Basic Options').get(
                             'Exit App when Game Exits') and self.device_manager.executor is not None and self.device_manager.executor.pause():
                         alert_info('Auto exit because game exited', True)
-                        communicate.quit.emit()
+                        communicate.emit_quit(self.app_exit_event)
                     else:
                         communicate.notification.emit('Game Exited', None, True, True, None, None)
                     self.hwnd = 0

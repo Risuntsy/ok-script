@@ -3,6 +3,7 @@ import cv2
 import mmap
 import os
 import select
+import threading
 from .base import BaseCaptureMethod
 from ok.util.logger import Logger
 from ok.device.wlroots.connection import WaylandConnection
@@ -25,6 +26,7 @@ class WlrootsCaptureMethod(BaseCaptureMethod):
         self._format = None
         self._buffer_size = 0
         self._frame_ready = False
+        self._capture_lock = threading.Lock()
 
     def connected(self):
         return self.connection is not None and self.connection.connected()
@@ -86,6 +88,10 @@ class WlrootsCaptureMethod(BaseCaptureMethod):
         self._buffer = self._shm_pool.create_buffer(0, width, height, stride, format_modifier)
 
     def do_get_frame(self):
+        with self._capture_lock:
+            return self._do_get_frame_locked()
+
+    def _do_get_frame_locked(self):
         if self.exit_event and self.exit_event.is_set():
             return None
         if not self.connection or not self.connection.outputs:

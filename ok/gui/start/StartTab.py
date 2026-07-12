@@ -93,9 +93,15 @@ class StartTab(Tab):
         self.debug_layout.addWidget(self.open_log_folder_button)
 
         self.log_window = None
+        self.wlroots_preview_dialog = None
         self.open_logs_button = PushButton(FluentIcon.COMMAND_PROMPT, self.tr("View Log"))
         self.open_logs_button.clicked.connect(self.open_logs)
         self.debug_layout.addWidget(self.open_logs_button)
+
+        self.wlroots_preview_button = PushButton(self.tr("Wayland Preview"))
+        self.wlroots_preview_button.clicked.connect(self.open_wlroots_preview)
+        self.wlroots_preview_button.setVisible(sys.platform == "linux")
+        self.debug_layout.addWidget(self.wlroots_preview_button)
 
         self.ocr_button = PushButton(FluentIcon.SEARCH, "OCR")
         self.ocr_button.clicked.connect(self.ocr_log)
@@ -131,6 +137,7 @@ class StartTab(Tab):
         self.update_capture(True)
         self.refresh_clicked()
         self.update_selection()
+        self.update_wlroots_preview_button()
         communicate.executor_paused.connect(self.update_selection)
 
     def interaction_index_changed(self):
@@ -203,6 +210,25 @@ class StartTab(Tab):
 
     def _log_window_closed(self, _obj=None):
         self.log_window = None
+
+    def open_wlroots_preview(self):
+        from ok.gui.wlroots.PreviewDialog import WlrootsPreviewDialog
+        if self.wlroots_preview_dialog is None:
+            self.wlroots_preview_dialog = WlrootsPreviewDialog(self.window())
+            self.wlroots_preview_dialog.destroyed.connect(self._wlroots_preview_closed)
+        self.wlroots_preview_dialog.show()
+        self.wlroots_preview_dialog.raise_()
+        self.wlroots_preview_dialog.activateWindow()
+
+    def _wlroots_preview_closed(self, _obj=None):
+        self.wlroots_preview_dialog = None
+
+    def update_wlroots_preview_button(self):
+        if sys.platform != "linux":
+            return
+        from ok import og
+        device = og.device_manager.get_preferred_device()
+        self.wlroots_preview_button.setEnabled(device is not None and device.get("device") == "wayland")
 
     @staticmethod
     def open_folder(folder):
@@ -302,6 +328,7 @@ class StartTab(Tab):
             elif device.get('device') == 'wayland':
                 og.device_manager.set_capture("wlroots")
             self.start_card.update_status()
+            self.update_wlroots_preview_button()
 
     def device_index_changed(self):  # i is an index
         i = self.device_list.currentRow()
@@ -313,6 +340,7 @@ class StartTab(Tab):
         og.device_manager.set_preferred_device(index=i)
         self.capture_list.update_for_device()
         self.interaction_list.update_for_device()
+        self.update_wlroots_preview_button()
         self.logger.debug(f"device_index_changed done {i}")
 
     def update_capture(self, finished):
@@ -363,6 +391,7 @@ class StartTab(Tab):
             self.start_card.refresh_button.setText(self.tr("Refresh"))
             self.capture_list.update_for_device()
             self.interaction_list.update_for_device()
+            self.update_wlroots_preview_button()
 
     def filter_devices(self, text=None):
         if text is None:
