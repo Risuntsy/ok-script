@@ -47,25 +47,63 @@ when available to provide a display name, but capture still targets an output.
 
 ## Connection Lifecycle
 
-Constructing `DeviceManager` does not open a Wayland socket. Device refresh or start
-creates the connection lazily through `WaylandConnection.get()`.
+Constructing `DeviceManager` does not open a Wayland socket. Device refresh probes
+the discovered sockets with short-lived connections. Starting a selected device
+creates the shared runtime connection lazily through `WaylandConnection.get()`.
 
 Socket discovery scans `$XDG_RUNTIME_DIR/wayland-*`, keeps actual socket files, and
-sorts them by descending numeric suffix. The first socket that accepts a connection
-and exposes the required protocols is used. If no socket file is found, discovery
-falls back to `$WAYLAND_DISPLAY` or `wayland-0`.
+sorts them by descending numeric suffix. Every socket is registry-probed, and every
+socket exposing the required protocols is returned to the device list. Unsupported
+sockets are omitted. If no socket file is found, discovery probes `$WAYLAND_DISPLAY`
+or `wayland-0` as a fallback.
 
 `WaylandConnection` is a process-wide singleton shared by capture and interaction.
 Its registry binds screencopy, shared memory, seat, output, virtual input, and
 foreign-toplevel globals. `connected()` polls the display descriptor for connection
 errors. Disconnect resets the singleton and all bound globals.
 
+### Socket Discovery And Selection
+
+`WaylandConnection.list_supported_sockets()` returns every compatible socket as a
+list of dictionaries:
+
+```python
+[
+    {
+        "socket_name": "wayland-2",
+        "nick": "Wuthering Waves",
+        "width": 1920,
+        "height": 1080,
+    },
+    {
+        "socket_name": "wayland-1",
+        "nick": "Wayland Desktop",
+        "width": 2560,
+        "height": 1440,
+    },
+]
+```
+
+The descending numeric order only controls display order and the default fallback;
+it does not restrict selection to the largest suffix. `DeviceManager` converts every
+entry into a device with an identifier such as `wayland_wayland-2` and keeps the
+socket name in both `socket` and `address`. Selecting a row stores that unique device
+identifier as the preferred device. On start, `WlrootsCaptureMethod` receives the
+selected socket name explicitly.
+
+Sockets that cannot be opened, lack screencopy, shared memory, a seat, or an output
+are not returned. Pointer and keyboard availability is still reported by the
+corresponding optional protocol managers after connection.
+
 ## Device Model
 
-The Linux desktop appears as one `wayland` device with identifier
-`wayland_desktop`. Its resolution comes from the first `wl_output`. A title or app ID
-from the first advertised toplevel may be used as the device name; this does not
-change the capture target.
+Each compatible socket appears as a separate `wayland` device, identified by its
+socket name. The Start tab can freely select any returned device, and the preferred
+device persists through its unique identifier. Switching devices closes the old
+capture and virtual-input objects before connecting to the newly selected socket.
+Each device resolution comes from that socket's first `wl_output`. A title or app ID
+from the first advertised toplevel may be included in the display name; this does
+not change the capture target.
 
 Linux does not create `HwndWindow` or run the Windows window-size monitor. Windows
 capture, interaction, DPI, process, task-scheduler, and audio behavior remains
@@ -129,19 +167,21 @@ output, record video, or select a capture region.
 - Only compositors exposing the required wlroots protocols are supported.
 - Capture uses the first output and includes the whole output.
 - Multi-output selection is not exposed.
-- Socket selection is automatic and has no persisted GUI override.
+- Only sockets that pass the required-protocol probe appear in the device list.
 - Window-level crop, geometry, resize, activation, and foreground control are not available.
 - Linux game launch, scheduled tasks, and background audio controls are not available.
 
 ## Validation
 
-Use the repository virtual environment:
+Run validation through the sibling OK-WW uv project, which declares ok-script as an
+editable dependency:
 
 ```bash
-./.venv/bin/python -m compileall -q ok
-QT_QPA_PLATFORM=offscreen ./.venv/bin/python -m unittest -q \
+uv run --project ../ok-wuthering-waves python -m compileall -q ok
+QT_QPA_PLATFORM=offscreen uv run --project ../ok-wuthering-waves python -m unittest -q \
   tests.test_wlroots_preview \
-  tests.test_capture_update
+  tests.test_capture_update \
+  tests.test_wayland_socket_selection
 ```
 
 Protocol behavior that depends on a real compositor must be verified in the target

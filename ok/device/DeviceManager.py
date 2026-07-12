@@ -296,45 +296,29 @@ class DeviceManager:
     def update_wlroots_device(self):
         try:
             from ok.device.wlroots.connection import WaylandConnection
-            conn = WaylandConnection.get()
-            if not conn or not conn.outputs:
-                return
-
-            # NOTE: Do NOT call conn.dispatch() here. Wayland display is not thread-safe
-            # and do_get_frame (in the capture thread) also calls display.dispatch().
-            # Toplevel state is populated during connect() roundtrip; skipping dispatch
-            # avoids "Cannot find display" RuntimeError from pywayland.
-
             keys_to_remove = [k for k in self.device_dict if k.startswith('wayland_')]
             for k in keys_to_remove:
                 del self.device_dict[k]
 
-            # Use the first output as the capture target; no need to match a specific toplevel.
-            out_w, out_h = 1920, 1080
-            out_w = getattr(conn.outputs[0], 'width', 1920)
-            out_h = getattr(conn.outputs[0], 'height', 1080)
-
-            # Build a friendly nick from toplevels if available, otherwise fall back to generic desktop.
-            nick = "Wayland Desktop"
-            for toplevel in getattr(conn, 'toplevels', []):
-                title = getattr(toplevel, 'title', '')
-                app_id = getattr(toplevel, 'app_id', '')
-                if title or app_id:
-                    nick = title or app_id
-                    break
-
-            imei = "wayland_desktop"
-            wl_device = {
-                "address": "", "imei": imei, "device": "wayland",
-                "model": "", "nick": nick,
-                "width": out_w, "height": out_h,
-                "hwnd": nick, "capture": "wlroots",
-                "connected": True, "full_path": "",
-                "real_hwnd": 0, "exe": [],
-                "resolution": f"{out_w}x{out_h}"
-            }
-            logger.info(f"update_wlroots_device using wayland desktop: {wl_device['nick']} resolution: {wl_device['resolution']}")
-            self.device_dict[imei] = wl_device
+            for socket_info in WaylandConnection.list_supported_sockets():
+                socket_name = socket_info['socket_name']
+                out_w = socket_info['width']
+                out_h = socket_info['height']
+                nick = f"{socket_info['nick']} ({socket_name})"
+                imei = f"wayland_{socket_name}"
+                wl_device = {
+                    "address": socket_name, "socket": socket_name,
+                    "imei": imei, "device": "wayland",
+                    "model": "", "nick": nick,
+                    "width": out_w, "height": out_h,
+                    "hwnd": nick, "capture": "wlroots",
+                    "connected": True, "full_path": "",
+                    "real_hwnd": 0, "exe": [],
+                    "resolution": f"{out_w}x{out_h}"
+                }
+                logger.info(
+                    f"update_wlroots_device found {socket_name}: {nick} resolution: {wl_device['resolution']}")
+                self.device_dict[imei] = wl_device
         except Exception as e:
             for device in self.device_dict.values():
                 if device.get("device") == "wayland":
@@ -703,10 +687,21 @@ class DeviceManager:
                 logger.error('Wlroots capture is unavailable; install pywayland on Linux')
                 preferred['connected'] = False
                 return
+            socket_name = preferred.get('socket') or preferred.get('address')
+            socket_changed = (
+                isinstance(self.capture_method, WlrootsCaptureMethod)
+                and self.capture_method.socket_name != socket_name
+            )
+            if socket_changed:
+                if self.interaction is not None:
+                    self.interaction.on_destroy()
+                    self.interaction = None
+                self.capture_method.close()
+                self.capture_method = None
             if not isinstance(self.capture_method, WlrootsCaptureMethod):
                 if self.capture_method is not None:
                     self.capture_method.close()
-                self.capture_method = WlrootsCaptureMethod()
+                self.capture_method = WlrootsCaptureMethod(socket_name=socket_name)
             self.capture_method.exit_event = self.exit_event
             if self.capture_method.start_or_stop():
                 logger.info('use Wlroots capture')

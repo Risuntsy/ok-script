@@ -18,9 +18,8 @@ class WaylandConnection:
     Opens and owns the Wayland socket connection.
 
     Socket selection priority:
-      1. Explicit `socket_name` argument (manual override from GUI / config)
-      2. Auto-discovery: all wayland-N sockets in $XDG_RUNTIME_DIR sorted
-         by descending N — highest = innermost nested compositor
+      1. Explicit `socket_name` argument selected by the user
+      2. Auto-discovery: the first compatible socket from all wayland-N sockets
       3. $WAYLAND_DISPLAY env var fallback
 
     Discovers all required wlroots protocol globals from wl_registry.
@@ -57,6 +56,35 @@ class WaylandConnection:
         from ok.util.wayland import discover_sockets
         return discover_sockets()
 
+    @classmethod
+    def list_supported_sockets(cls) -> list[dict]:
+        """Probe every discovered socket and describe those usable by wlroots capture."""
+        supported = []
+        for socket_name in cls.list_available_sockets():
+            connection = cls()
+            try:
+                connection.connect(socket_name)
+                output = connection.outputs[0]
+                nick = "Wayland Desktop"
+                for toplevel in connection.toplevels:
+                    title = getattr(toplevel, 'title', '')
+                    app_id = getattr(toplevel, 'app_id', '')
+                    if title or app_id:
+                        nick = title or app_id
+                        break
+                supported.append({
+                    'socket_name': socket_name,
+                    'nick': nick,
+                    'width': getattr(output, 'width', 1920) or 1920,
+                    'height': getattr(output, 'height', 1080) or 1080,
+                })
+            except Exception as e:
+                logger.debug(
+                    f'WaylandConnection: socket {socket_name} is not a supported wlroots socket: {e}')
+            finally:
+                connection.disconnect()
+        return supported
+
     def connect(self, socket_name: str | None = None):
         """
         Connect to a Wayland compositor socket.
@@ -65,35 +93,34 @@ class WaylandConnection:
         ----------
         socket_name:
             Explicit socket name (e.g. 'wayland-2') for manual override.
-            If None, auto-discovery selects the highest-numbered socket
-            that successfully accepts a connection.
+            If None, auto-discovery selects the first socket that accepts a
+            connection and exposes all required protocols.
         """
         candidates = [socket_name] if socket_name else self.list_available_sockets()
-        self.closing = False
         last_err = None
         for name in candidates:
+            self.closing = False
+            self._reset_globals()
             try:
                 display = Display(name)
                 display.connect()
                 self.display = display
                 self.socket_name = name
-                logger.info(f'WaylandConnection: connected to {name}')
-                break
+                registry = self.display.get_registry()
+                registry.dispatcher['global'] = self._on_global
+                self.display.roundtrip()
+                if self.outputs:
+                    self.display.roundtrip()
+                self._check_required()
+                logger.info(f'WaylandConnection: connected to supported socket {name}')
+                return
             except Exception as e:
                 logger.debug(f'WaylandConnection: failed to connect to {name}: {e}')
                 last_err = e
-        else:
-            raise WlrootsUnsupportedError(
-                f'Could not connect to any Wayland socket. '
-                f'Tried: {candidates}. Last error: {last_err}')
-
-        registry = self.display.get_registry()
-        registry.dispatcher['global'] = self._on_global
-        self.display.roundtrip()   # process registry announce events
-        # After binding wl_output objects, wait for their mode/done events
-        if self.outputs:
-            self.display.roundtrip()
-        self._check_required()
+                self.disconnect()
+        raise WlrootsUnsupportedError(
+            f'Could not connect to a supported Wayland socket. '
+            f'Tried: {candidates}. Last error: {last_err}')
 
     def reconnect(self, socket_name: str):
         """
@@ -202,6 +229,7 @@ class WaylandConnection:
             'zwlr_screencopy_manager_v1': self.screencopy_manager,
             'wl_shm': self.shm,
             'wl_seat': self.seat,
+            'wl_output': self.outputs[0] if self.outputs else None,
         }
         self._missing = [k for k, v in required.items() if v is None]
         if self._missing:

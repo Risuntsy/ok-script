@@ -159,11 +159,10 @@ class ExecutorOperation:
         elif 0 < x < 1 or 0 < y < 1:
             return self.click_relative(x, y, move_back=move_back, move=move, interval=interval, after_sleep=after_sleep,
                                        name=name, down_time=down_time, key=key, hcenter=hcenter, vcenter=vcenter)
-        before_frame = self.operation_capture_logger.capture_frame()
         if not self.check_interval(interval):
-            self.operation_capture_logger.log('click', success=False, before_frame=before_frame,
-                                              success_kind='interval_skipped', x=x, y=y, key=key, name=name,
-                                              interval=interval)
+            self.operation_capture_logger.log_event(
+                'click', success=False, success_kind='interval_skipped',
+                x=x, y=y, key=key, name=name, interval=interval)
             self.executor.reset_scene()
             return False
         communicate.emit_draw_box(f"{key}_click",
@@ -174,9 +173,9 @@ class ExecutorOperation:
             self.logger.info(f'{key}_click {name} {x, y} after_sleep {after_sleep}')
         if after_sleep > 0:
             self.sleep(after_sleep)
-        self.operation_capture_logger.log('click', success=True, before_frame=before_frame, success_kind='sent',
-                                          x=x, y=y, key=key, name=name, move_back=move_back, move=move,
-                                          down_time=down_time, after_sleep=after_sleep)
+        self.operation_capture_logger.log_event(
+            'click', success=True, success_kind='sent', x=x, y=y, key=key, name=name,
+            move_back=move_back, move=move, down_time=down_time, after_sleep=after_sleep)
         self.executor.reset_scene()
         return True
 
@@ -482,10 +481,9 @@ class ExecutorOperation:
         :return: True if sent. 如果发送返回 True。
         """
         key = self.validate_key(key)
-        before_frame = self.operation_capture_logger.capture_frame()
         if not self.check_interval(interval):
-            self.operation_capture_logger.log('send_key', success=False, before_frame=before_frame,
-                                              success_kind='interval_skipped', key=key, interval=interval)
+            self.operation_capture_logger.log_event(
+                'send_key', success=False, success_kind='interval_skipped', key=key, interval=interval)
             self.executor.reset_scene()
             return False
         communicate.emit_draw_box("send_key",
@@ -495,8 +493,9 @@ class ExecutorOperation:
         self.executor.interaction.send_key(key, down_time)
         if after_sleep > 0:
             self.sleep(after_sleep)
-        self.operation_capture_logger.log('send_key', success=True, before_frame=before_frame, success_kind='sent',
-                                          key=key, down_time=down_time, after_sleep=after_sleep)
+        self.operation_capture_logger.log_event(
+            'send_key', success=True, success_kind='sent',
+            key=key, down_time=down_time, after_sleep=after_sleep)
         return True
 
     def get_global_config(self, option):

@@ -13,8 +13,9 @@ logger = Logger.get_logger(__name__)
 class WlrootsCaptureMethod(BaseCaptureMethod):
     name = "Wlroots Capture"
 
-    def __init__(self, hwnd=None):
+    def __init__(self, hwnd=None, socket_name=None):
         super().__init__()
+        self.socket_name = socket_name
         self.connection = None
         self.frame_data = None
         self._fd = -1
@@ -37,7 +38,8 @@ class WlrootsCaptureMethod(BaseCaptureMethod):
 
     def start_or_stop(self):
         try:
-            self.connection = WaylandConnection.get()
+            self.connection = WaylandConnection.get(self.socket_name)
+            self.socket_name = self.connection.socket_name
             return self.connected()
         except Exception as e:
             self.connection = None
