@@ -163,7 +163,7 @@ profiles:
   uses: ok-oldking/pyappify-action@master
   with:
     # 使用上一个稳定版本的 Release 来获取已打包的启动器，从而跳过耗时的打包过程
-    use_release: https://api.github.com/repos/ok-oldking/ok-wuthering-waves/releases/tags/v2.7.12
+    use_release: https://api.github.com/repos/<owner>/<repo>/releases/tags/<previous-stable-tag>
 ```
 
 **注意**: 您需要将上面的 URL 替换为您自己项目的上一个稳定 Release 的 API 地址。这样配置后，Action 会直接下载并使用该版本中的

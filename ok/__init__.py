@@ -308,6 +308,7 @@ class App:
                 logger.debug(f'overlay close failed: {e}')
         if self.main_window and getattr(self.main_window, 'tray', None):
             self.main_window.tray.hide()
+        from PySide6.QtCore import QCoreApplication
         QCoreApplication.quit()
 
     def tr(self, key):

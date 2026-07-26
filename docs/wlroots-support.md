@@ -43,7 +43,6 @@ when available to provide a display name, but capture still targets an output.
 | Pointer and keyboard input | `ok/device/interaction_methods/wlroots.py` |
 | Evdev key mapping | `ok/device/interaction_methods/evdev_keys.py` |
 | Device selection | `ok/device/DeviceManager.py` |
-| Preview dialog | `ok/gui/wlroots/PreviewDialog.py` |
 
 ## Connection Lifecycle
 
@@ -121,8 +120,8 @@ isolated to Windows.
 4. Stop polling immediately when the shared exit event is set.
 5. Convert XRGB8888 or XBGR8888 shared memory into a BGR NumPy frame.
 
-A capture lock serializes frame requests from the task executor and preview dialog.
-This is required because both consumers share one Wayland display connection.
+A capture lock serializes frame requests because the backend owns one shared
+Wayland display connection.
 
 Capture coordinates are output coordinates. The backend does not crop to a window
 or translate through window geometry.
@@ -143,25 +142,6 @@ Button presses enforce a minimum down time. Keyboard initialization installs a
 self-contained XKB keymap through a shared-memory file descriptor. Shutdown destroys
 the virtual devices and closes the keymap descriptor.
 
-## Wayland Preview
-
-The Start tab exposes **Wayland Preview** on Linux. The button is enabled when the
-preferred device has type `wayland`.
-
-The dialog:
-
-- validates that the active capture method is a connected `WlrootsCaptureMethod`
-- requests frames on a daemon worker thread
-- allows only one outstanding preview request
-- refreshes once per second
-- converts BGR frames to copied RGB `QImage` objects
-- preserves aspect ratio and centers the image
-- displays capture state and frame dimensions
-- stops its timer when closed
-
-The preview is view-only. It does not inject pointer or keyboard input, select an
-output, record video, or select a capture region.
-
 ## Limits
 
 - Only compositors exposing the required wlroots protocols are supported.
@@ -173,17 +153,15 @@ output, record video, or select a capture region.
 
 ## Validation
 
-Run validation through the sibling OK-WW uv project, which declares ok-script as an
-editable dependency:
+Run validation through the repository-local virtual environment:
 
 ```bash
-uv run --project ../ok-wuthering-waves python -m compileall -q ok
-QT_QPA_PLATFORM=offscreen uv run --project ../ok-wuthering-waves python -m unittest -q \
-  tests.test_wlroots_preview \
+./.venv/bin/python -m compileall -q ok
+QT_QPA_PLATFORM=offscreen ./.venv/bin/python -m unittest -q \
   tests.test_capture_update \
   tests.test_wayland_socket_selection
 ```
 
 Protocol behavior that depends on a real compositor must be verified in the target
-wlroots session. Unit tests cover frame conversion, preview state, capture retry,
-and capture cleanup behavior.
+wlroots session. Unit tests cover frame conversion, capture retry, and capture
+cleanup behavior.

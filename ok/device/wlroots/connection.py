@@ -270,7 +270,15 @@ class WaylandConnection:
         self.closing = True
         if self.display:
             try:
+                # Drain pending events while the display is still valid so
+                # pywayland callbacks do not raise "Cannot find display".
+                try:
+                    self.display.roundtrip()
+                except Exception:
+                    pass
                 self.display.disconnect()
+            except Exception as e:
+                logger.debug(f'WaylandConnection: disconnect ignored error: {e}')
             finally:
                 self.display = None
                 self._reset_globals()

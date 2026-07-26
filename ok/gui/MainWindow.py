@@ -261,6 +261,8 @@ class MainWindow(FluentWindow):
 
     def get_system_primary_theme_color(self):
         """Return a qfluent source color matching the Windows primary fill."""
+        if sys.platform != 'win32':
+            return None
         dark = isDarkTheme()
         try:
             from ok.rotypes.Windows.UI.ViewManagement import UIColorType, get_color_value
@@ -268,7 +270,7 @@ class MainWindow(FluentWindow):
             color_type = UIColorType.AccentLight2 if dark else UIColorType.AccentDark1
             system_color = get_color_value(color_type)
             red, green, blue = system_color.red, system_color.green, system_color.blue
-        except (ImportError, OSError, TypeError):
+        except (ImportError, OSError, TypeError, AttributeError):
             logger.exception('Failed to read the Windows accent color palette')
             fallback = self.get_system_accent_color()
             if fallback is None:
@@ -279,6 +281,8 @@ class MainWindow(FluentWindow):
         return QColor(red, green, blue)
 
     def _sync_system_accent_color(self, refresh=False):
+        if sys.platform != 'win32':
+            return False
         color = self.get_system_primary_theme_color()
         if color is None or color == qconfig.get(qconfig.themeColor):
             return False
@@ -337,6 +341,8 @@ class MainWindow(FluentWindow):
         QTimer.singleShot(250, self._apply_system_theme_change)
 
     def nativeEvent(self, event_type, message):
+        if sys.platform != 'win32':
+            return super().nativeEvent(event_type, message)
         try:
             import ctypes
             from ctypes import wintypes
