@@ -18,9 +18,10 @@ cd your-project-name
 
 *请将 `YOUR_USERNAME` 和 `your-project-name` 替换为您的 GitHub 用户名和您项目的名称。*
 
-## 3. 安装 Python
+## 3. 安装 Python 3.12
 
-请确保您的系统已经安装了 **Python 3.11 或更高版本**。您可以从 [Python 官方网站](https://www.python.org/downloads/) 下载并安装。
+请确保您的系统已经安装了 **Python 3.12**
+版本。此项目仅支持该版本。您可以从 [Python 官方网站](https://www.python.org/downloads/) 下载并安装。
 
 ## 4. 创建虚拟环境 (可选)
 

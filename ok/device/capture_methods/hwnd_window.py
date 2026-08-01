@@ -18,7 +18,14 @@ from ok.util.logger import Logger
 from ok.util.window import show_title_bar, get_window_bounds, resize_window, is_foreground_window, find_hwnd
 
 from ok.device.capture_methods.base import BaseWindowsCaptureMethod
-from ok.device.capture_methods.bitblt_utils import get_crop_point
+
+if sys.platform == "win32":
+    from ok.device.capture_methods.bitblt_utils import get_crop_point
+else:
+    def get_crop_point(frame_width, frame_height, target_width, target_height):
+        x = round((frame_width - target_width) / 2)
+        y = (frame_height - target_height) - x
+        return x, y
 
 logger = Logger.get_logger(__name__)
 

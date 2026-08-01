@@ -172,6 +172,7 @@ class TestBasicOptions(unittest.TestCase):
 
             self.assertIsNone(create_app_launcher_options(pyappify_module))
 
+    @patch('ok.util.GlobalConfig.sys.platform', 'win32')
     def test_app_launcher_options_update_pyappify_config(self):
         with tempfile.TemporaryDirectory() as folder:
             config_path = os.path.join(folder, 'app.json')
