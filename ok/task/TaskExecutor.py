@@ -188,10 +188,13 @@ class TaskExecutor:
             ocr_lib = DGOCR(**config_params)
         elif lib == 'onnxocr':
             from onnxocr.onnx_paddleocr import ONNXPaddleOcr
-            logger.info(f'init onnxocr {config_params}')
+            from ok import og
+            use_dml = config_params.get('use_dml', getattr(og, 'use_dml', False))
+            logger.info(f'init onnxocr {config_params} use_dml={use_dml}')
             ocr_lib = ONNXPaddleOcr(use_angle_cls=False,
                                     logger=logger,
                                     use_npu=config_params.get('use_npu', True),
+                                    use_dml=use_dml,
                                     use_openvino=config_params.get('use_openvino', False))
         elif lib == 'rapidocr':
             from rapidocr import RapidOCR
