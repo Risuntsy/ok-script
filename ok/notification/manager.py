@@ -2,7 +2,6 @@ from ok.notification.pipeline import NotificationPipeline
 from ok.notification.ppocr import NotificationPPOCR
 from ok.notification.providers import (
     DiscordProvider, QQBotProvider, TelegramBotProvider, WeComWebhookProvider)
-from ok.notification.windows_messenger import MessengerAutomation
 from ok.util.GlobalConfig import (
     DISCORD_NOTIFICATION_ENABLED, DISCORD_WEBHOOK, NOTIFICATION_OPTION_NAME,
     QQ_NICKNAME, QQ_NOTIFICATION_ENABLED, SYSTEM_NOTIFICATION_ENABLED,
@@ -78,6 +77,7 @@ class NotificationManager:
         if self.pipeline.stop_event.is_set():
             return False
         if self.config.get(QQ_NOTIFICATION_ENABLED):
+            from ok.notification.windows_messenger import MessengerAutomation
             self._safe_send('QQ', MessengerAutomation(
                 ('QQ.exe',), self.ocr, exit_event=self.pipeline.stop_event,
                 window_titles=('QQ',),
@@ -88,6 +88,7 @@ class NotificationManager:
         if self.pipeline.stop_event.is_set():
             return False
         if self.config.get(WECHAT_NOTIFICATION_ENABLED):
+            from ok.notification.windows_messenger import MessengerAutomation
             self._safe_send('WeChat', MessengerAutomation(
                 ('WeChat.exe', 'Weixin.exe'), self.ocr,
                 exit_event=self.pipeline.stop_event,

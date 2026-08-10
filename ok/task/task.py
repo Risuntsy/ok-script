@@ -12,7 +12,8 @@ from ok.feature.Box import find_boxes_by_name, find_boxes_within_boundary, Box, 
     sort_boxes, find_highest_confidence_box
 from ok.feature.FeatureSet import adjust_coordinates, resize_image, scale_box, join_list_elements
 from ok.gui.Communicate import communicate
-from ok.task.exceptions import HotkeyConfigException
+from ok.task.exceptions import HotkeyConfigException, WaitFailedException
+from ok.task.OperationCaptureLogger import OperationCaptureLogger
 from ok.util.color import calculate_color_percentage
 from ok.util.config import Config
 from ok.util.explorer import reveal_in_explorer
@@ -50,6 +51,7 @@ class ExecutorOperation:
         self.last_click_time = 0
         self.logger.debug(f'ExecutorOperation init {executor.scene}')
         self.scene = executor.scene
+        self.operation_capture_logger = OperationCaptureLogger(executor)
 
     def validate_key(self, key):
         if isinstance(key, int):
@@ -159,6 +161,9 @@ class ExecutorOperation:
             return self.click_relative(x, y, move_back=move_back, move=move, interval=interval, after_sleep=after_sleep,
                                        name=name, down_time=down_time, key=key, hcenter=hcenter, vcenter=vcenter)
         if not self.check_interval(interval):
+            self.operation_capture_logger.log_event(
+                'click', success=False, success_kind='interval_skipped',
+                x=x, y=y, key=key, name=name, interval=interval)
             self.executor.reset_scene()
             return False
         communicate.emit_draw_box(f"{key}_click",
@@ -169,6 +174,9 @@ class ExecutorOperation:
             self.logger.info(f'{key}_click {name} {x, y} after_sleep {after_sleep}')
         if after_sleep > 0:
             self.sleep(after_sleep)
+        self.operation_capture_logger.log_event(
+            'click', success=True, success_kind='sent', x=x, y=y, key=key, name=name,
+            move_back=move_back, move=move, down_time=down_time, after_sleep=after_sleep)
         self.executor.reset_scene()
         return True
 
@@ -202,6 +210,8 @@ class ExecutorOperation:
             return device.get('device') == 'browser'
 
     def mouse_down(self, x=-1, y=-1, name=None, key="left"):
+        self.operation_capture_logger.log_event('mouse_down', success=True, success_kind='sent',
+                                                x=x, y=y, name=name, key=key)
         frame = self.executor.nullable_frame()
         communicate.emit_draw_box("mouse_down",
                                   [Box(max(0, x - 10), max(0, y - 10), 20, 20, name="click", confidence=-1)], "green",
@@ -210,6 +220,7 @@ class ExecutorOperation:
         self.executor.interaction.mouse_down(x, y, name=name, key=key)
 
     def mouse_up(self, name=None, key="left"):
+        self.operation_capture_logger.log_event('mouse_up', success=True, success_kind='sent', name=name, key=key)
         communicate.emit_draw_box("mouse_up",
                                   self.box_of_screen(0.5, 0.5, width=0.01, height=0.01, name="mouse_up", confidence=-1),
                                   "green")
@@ -472,6 +483,8 @@ class ExecutorOperation:
         """
         key = self.validate_key(key)
         if not self.check_interval(interval):
+            self.operation_capture_logger.log_event(
+                'send_key', success=False, success_kind='interval_skipped', key=key, interval=interval)
             self.executor.reset_scene()
             return False
         communicate.emit_draw_box("send_key",
@@ -481,6 +494,9 @@ class ExecutorOperation:
         self.executor.interaction.send_key(key, down_time)
         if after_sleep > 0:
             self.sleep(after_sleep)
+        self.operation_capture_logger.log_event(
+            'send_key', success=True, success_kind='sent',
+            key=key, down_time=down_time, after_sleep=after_sleep)
         return True
 
     def get_global_config(self, option):
@@ -491,6 +507,8 @@ class ExecutorOperation:
 
     def send_key_down(self, key, after_sleep=0):
         key = self.validate_key(key)
+        self.operation_capture_logger.log_event('send_key_down', success=True, success_kind='sent', key=key,
+                                                after_sleep=after_sleep)
         self.executor.reset_scene()
         self.executor.interaction.send_key_down(key)
         if after_sleep > 0:
@@ -498,6 +516,8 @@ class ExecutorOperation:
 
     def send_key_up(self, key, after_sleep=0):
         key = self.validate_key(key)
+        self.operation_capture_logger.log_event('send_key_up', success=True, success_kind='sent', key=key,
+                                                after_sleep=after_sleep)
         self.executor.reset_scene()
         self.executor.interaction.send_key_up(key)
         if after_sleep > 0:
@@ -664,19 +684,33 @@ class FindFeature(ExecutorOperation):
                            time_out=0, pre_action=None, post_action=None, box=None, raise_if_not_found=True,
                            use_gray_scale=False, canny_lower=0, canny_higher=0, click_after_delay=0, settle_time=-1,
                            after_sleep=0, target_height=0):
-        box = self.wait_until(
-            lambda: self.find_one(feature, horizontal_variance, vertical_variance, threshold, box=box,
-                                  use_gray_scale=use_gray_scale, canny_lower=canny_lower, canny_higher=canny_higher,
-                                  target_height=target_height),
-            time_out=time_out,
-            pre_action=pre_action,
-            post_action=post_action, raise_if_not_found=raise_if_not_found,
-            settle_time=settle_time)
-        if box is not None:
+        before_frame = self.operation_capture_logger.capture_frame()
+        try:
+            found_box = self.wait_until(
+                lambda: self.find_one(feature, horizontal_variance, vertical_variance, threshold, box=box,
+                                      use_gray_scale=use_gray_scale, canny_lower=canny_lower, canny_higher=canny_higher,
+                                      target_height=target_height),
+                time_out=time_out,
+                pre_action=pre_action,
+                post_action=post_action, raise_if_not_found=raise_if_not_found,
+                settle_time=settle_time)
+        except WaitFailedException:
+            self.operation_capture_logger.log('wait_click_feature', success=False, before_frame=before_frame,
+                                              success_kind='not_found', feature=feature, threshold=threshold,
+                                              time_out=time_out, search_box=box)
+            raise
+        if found_box is not None:
             if click_after_delay > 0:
                 self.sleep(click_after_delay)
-            self.click_box(box, relative_x, relative_y, after_sleep=after_sleep)
+            self.click_box(found_box, relative_x, relative_y, after_sleep=after_sleep)
+            self.operation_capture_logger.log('wait_click_feature', success=True, before_frame=before_frame,
+                                              success_kind='found_and_clicked', feature=feature, box=found_box,
+                                              search_box=box, relative_x=relative_x, relative_y=relative_y,
+                                              threshold=threshold, time_out=time_out, after_sleep=after_sleep)
             return True
+        self.operation_capture_logger.log('wait_click_feature', success=False, before_frame=before_frame,
+                                          success_kind='not_found', feature=feature, threshold=threshold,
+                                          time_out=time_out, search_box=box)
         return False
 
     def find_one(self, feature_name=None, horizontal_variance=0, vertical_variance=0, threshold=0,
@@ -1029,12 +1063,18 @@ class OCR(FindFeature):
     def wait_click_ocr(self, x=0, y=0, to_x=1, to_y=1, width=0, height=0, box=None, name=None, match=None, threshold=0,
                        frame=None, target_height=0, time_out=0, raise_if_not_found=False, recheck_time=0, after_sleep=0,
                        post_action=None, log=False, screenshot=False, settle_time=-1, lib="default"):
-
-        result = self.wait_ocr(x, y, width=width, height=height, to_x=to_x, to_y=to_y, box=box, name=name, match=match,
-                               threshold=threshold, frame=frame, target_height=target_height, time_out=time_out,
-                               raise_if_not_found=raise_if_not_found, post_action=post_action, log=log,
-                               screenshot=screenshot,
-                               settle_time=settle_time, lib=lib)
+        before_frame = self.operation_capture_logger.capture_frame()
+        try:
+            result = self.wait_ocr(x, y, width=width, height=height, to_x=to_x, to_y=to_y, box=box, name=name,
+                                   match=match, threshold=threshold, frame=frame, target_height=target_height,
+                                   time_out=time_out, raise_if_not_found=raise_if_not_found, post_action=post_action,
+                                   log=log, screenshot=screenshot, settle_time=settle_time, lib=lib)
+        except WaitFailedException:
+            self.operation_capture_logger.log('wait_click_ocr', success=False, before_frame=before_frame,
+                                              success_kind='not_found', x=x, y=y, to_x=to_x, to_y=to_y,
+                                              width=width, height=height, box=box, match=match, threshold=threshold,
+                                              name=name, time_out=time_out)
+            raise
         if recheck_time > 0:
             self.sleep(1)
             result = self.ocr(x, y, width=width, height=height, to_x=to_x, to_y=to_y, box=box, name=name, match=match,
@@ -1042,8 +1082,17 @@ class OCR(FindFeature):
                               screenshot=screenshot, lib=lib)
         if result is not None:
             self.click_box(result, after_sleep=after_sleep)
+            self.operation_capture_logger.log('wait_click_ocr', success=True, before_frame=before_frame,
+                                              success_kind='found_and_clicked', result=result, match=match,
+                                              threshold=threshold, x=x, y=y, to_x=to_x, to_y=to_y,
+                                              width=width, height=height, box=box, name=name, time_out=time_out,
+                                              after_sleep=after_sleep)
             return result
         else:
+            self.operation_capture_logger.log('wait_click_ocr', success=False, before_frame=before_frame,
+                                              success_kind='not_found', match=match, threshold=threshold, name=name,
+                                              x=x, y=y, to_x=to_x, to_y=to_y, width=width, height=height,
+                                              box=box, time_out=time_out)
             logger.warning(f'wait ocr no box {x} {y} {width} {height} {to_x} {to_y} {match}')
 
     def wait_ocr(self, x=0, y=0, to_x=1, to_y=1, width=0, height=0, name=None, box=None, match=None, threshold=0,
@@ -1153,15 +1202,14 @@ class BaseTask(OCR):
             {'Exit After Task': 'Exit the Game and the App after Successfully Executing the Task'})
 
     def get_status(self):
+        if not self.enabled:
+            return "Not Started"
         if self.running:
             return "Running"
-        elif self.enabled:
-            if self.paused:
-                return "Paused"
-            else:
-                return "In Queue"
+        elif self.paused:
+            return "Paused"
         else:
-            return "Not Started"
+            return "In Queue"
 
     def ensure_capture(self, config=None):
         if config is None:
@@ -1310,6 +1358,7 @@ class BaseTask(OCR):
         if key != 'Log' and key != 'Error':
             self.logger.info(f'info_set {key} {value}')
         self.info[key] = value
+        self.operation_capture_logger.log_event('step', success=True, success_kind='info_set', key=key, value=value)
 
     def info_get(self, *args, **kwargs):
         return self.info.get(*args, **kwargs)
@@ -1333,7 +1382,12 @@ class BaseTask(OCR):
     def disable(self):
         self._enabled = False
         self.executor.remove_onetime_task(self)
-        self.executor._wake_executor()
+        if self.executor.current_task is self:
+            self._paused = False
+            self.running = False
+            self.executor.start()
+        else:
+            self.executor._wake_executor()
         communicate.task.emit(self)
 
     @property

@@ -1,11 +1,11 @@
 import threading
+import sys
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import ok.gui.StartController as start_controller_module
 from ok.gui.StartController import StartController
-from ok.util.gpu_driver_settings import GpuDriverPostProcessing
 
 
 class FakeClock:
@@ -98,13 +98,16 @@ class TestStartController(unittest.TestCase):
 
         with patch.object(start_controller_module, 'og', fake_og), \
                 patch.object(start_controller_module, 'is_admin', return_value=True), \
-                patch.object(start_controller_module, 'execute', execute):
+                patch.object(start_controller_module, 'execute', execute), \
+                patch.object(sys, 'platform', 'win32'):
             self.assertTrue(controller.start_device())
 
         self.assertEqual(['execute', 'stable', 'ready'], call_order)
         execute.assert_called_once_with(r'C:\game.exe', arguments=None, start_method='os.startfile')
 
+    @unittest.skipUnless(sys.platform == 'win32', 'Windows GPU driver integration')
     def test_gpu_driver_warning_identifies_each_enabled_vendor_feature(self):
+        from ok.util.gpu_driver_settings import GpuDriverPostProcessing
         controller = self.make_controller()
         emit = Mock()
         fake_communicate = SimpleNamespace(notification=SimpleNamespace(emit=emit))

@@ -1,7 +1,8 @@
-"""Open or focus Windows Explorer folders without creating duplicate windows."""
+"""Open folders in the system file manager, with Windows Explorer focus reuse."""
 
 import ctypes
 import os
+import subprocess
 import sys
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -42,8 +43,7 @@ def _open_or_focus(folder, item_name=None, item_path=None):
         f'platform={sys.platform!r}'
     )
     if sys.platform != 'win32':
-        logger.warning('Windows Explorer is only available on Windows')
-        return False
+        return _open_or_focus_non_windows(folder, item_path)
 
     if _focus_existing_explorer_window(folder, item_name):
         logger.info(f'Explorer focused existing window: folder={str(folder)!r}')
@@ -127,6 +127,22 @@ def _open_and_select_item(item_path):
 
 def _format_hresult(result):
     return f'0x{result & 0xFFFFFFFF:08X}'
+
+
+def _open_or_focus_non_windows(folder, item_path=None):
+    try:
+        if sys.platform == 'darwin':
+            if item_path is not None:
+                subprocess.Popen(['open', '-R', str(item_path)])
+            else:
+                subprocess.Popen(['open', str(folder)])
+        else:
+            target = item_path.parent if item_path is not None else folder
+            subprocess.Popen(['xdg-open', str(target)])
+        return True
+    except OSError as error:
+        logger.warning(f'Could not open file manager: {error}')
+        return False
 
 
 def _get_explorer_windows():

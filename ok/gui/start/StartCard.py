@@ -1,7 +1,11 @@
-from ctypes import windll, wintypes
+try:
+    from ctypes import windll, wintypes
+    from _ctypes import byref
+    has_win32 = True
+except ImportError:
+    has_win32 = False
 
 from PySide6.QtCore import Qt, Signal
-from _ctypes import byref
 from qfluentwidgets import FluentIcon, PrimaryPushButton, SettingCard, PushButton
 
 from ok import Handler
@@ -90,23 +94,20 @@ class StartCard(SettingCard):
             if not og.executor.connected():
                 self.status_bar.setTitle(self.tr("Game Window Disconnected"))
                 self.status_bar.setState(True)
+            elif (task := og.executor.current_task) and task.enabled:
+                if not og.executor.can_capture():
+                    self.status_bar.setTitle(self.tr('Paused: PC Game Window Must Be in Front!'))
+                    self.status_bar.setState(True)
+                else:
+                    self.status_bar.setTitle(self.tr("Running") + ": " + task.name)
+                    self.status_bar.setState(False)
             elif active_trigger_task_count := og.executor.active_trigger_task_count():
                 if not og.executor.can_capture():
                     self.status_bar.setTitle(self.tr('Paused: PC Game Window Must Be in Front!'))
                     self.status_bar.setState(True)
                 else:
                     self.status_bar.setTitle(
-                        self.tr("Running") + ": " + str(active_trigger_task_count) + ' ' + self.tr("Trigger Tasks"))
-                    self.status_bar.setState(False)
-            elif task := og.executor.current_task:
-                if not og.executor.can_capture():
-                    self.status_bar.setTitle(self.tr('Paused: PC Game Window Must Be in Front!'))
-                    self.status_bar.setState(True)
-                elif task.enabled:
-                    self.status_bar.setTitle(self.tr("Running") + ": " + task.name)
-                    self.status_bar.setState(False)
-                else:
-                    self.status_bar.setTitle(self.tr("Waiting for task to be enabled"))
+                        self.tr("Enabled") + ": " + str(active_trigger_task_count) + ' ' + self.tr("Trigger Tasks"))
                     self.status_bar.setState(False)
             else:
                 self.status_bar.setTitle(self.tr("Waiting for task to be enabled"))
@@ -120,16 +121,20 @@ class StartCard(SettingCard):
             self.current_hotkey = new_hotkey
             self.hotkey_changed.emit()
 
-        msg = wintypes.MSG()
-        if windll.user32.PeekMessageW(byref(msg), None, 0, 0, 1):
-            if msg.message == 0x0312:  # WM_HOTKEY
-                logger.debug(f'hotkey pressed {msg}')
-                if msg.wParam == 999:
-                    self.clicked()
+        if has_win32:
+            msg = wintypes.MSG()
+            if windll.user32.PeekMessageW(byref(msg), None, 0, 0, 1):
+                if msg.message == 0x0312:  # WM_HOTKEY
+                    logger.debug(f'hotkey pressed {msg}')
+                    if msg.wParam == 999:
+                        self.clicked()
 
         self.handler.post(self.check_hotkey, 0.1)
 
     def rebind_hotkey(self, hotkey):
+        if not has_win32:
+            logger.debug(f"Hotkey registration skipped on non-Windows: {hotkey}")
+            return
         windll.user32.UnregisterHotKey(None, 999)
         vk_map = {'F9': 0x78, 'F10': 0x79, 'F11': 0x7A, 'F12': 0x7B}
 

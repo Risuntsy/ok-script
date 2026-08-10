@@ -188,10 +188,13 @@ class TaskExecutor:
             ocr_lib = DGOCR(**config_params)
         elif lib == 'onnxocr':
             from onnxocr.onnx_paddleocr import ONNXPaddleOcr
-            logger.info(f'init onnxocr {config_params}')
+            from ok import og
+            use_dml = config_params.get('use_dml', getattr(og, 'use_dml', False))
+            logger.info(f'init onnxocr {config_params} use_dml={use_dml}')
             ocr_lib = ONNXPaddleOcr(use_angle_cls=False,
                                     logger=logger,
                                     use_npu=config_params.get('use_npu', True),
+                                    use_dml=use_dml,
                                     use_openvino=config_params.get('use_openvino', False))
         elif lib == 'rapidocr':
             from rapidocr import RapidOCR
@@ -309,7 +312,13 @@ class TaskExecutor:
         if timeout <= 0:
             return
         if self.debug_mode:
-            time.sleep(timeout)
+            end_time = time.time() + timeout
+            while time.time() < end_time:
+                self.check_enabled(check_pause=False)
+                if self.exit_event.is_set():
+                    logger.info("sleep Exit event set. Exiting early.")
+                    sys.exit(0)
+                time.sleep(min(0.05, max(0, end_time - time.time())))
             return
         self.pause_end_time = time.time() + timeout
         task = None
@@ -396,7 +405,7 @@ class TaskExecutor:
     def start(self):
         with self.lock:
             if self.thread is None:
-                self.thread = threading.Thread(target=self.execute, name="TaskExecutor")
+                self.thread = threading.Thread(target=self.execute, name="TaskExecutor", daemon=True)
                 self.thread.start()
             if self.paused:
                 self.paused = False
@@ -564,20 +573,22 @@ class TaskExecutor:
                         self.reset_scene()
                         continue
                 else:
-                    prevent_sleeping(True)
+                    if sys.platform == 'win32':
+                        prevent_sleeping(True)
                     logger.debug(f'start running onetime_task {task.name}')
                     task.run()
                     logger.debug(f'end running onetime_task {task.name}')
-                    prevent_sleeping(False)
+                    if sys.platform == 'win32':
+                        prevent_sleeping(False)
                     task.disable()
                     communicate.task_done.emit(task)
-                    if task.exit_after_task or task.config.get('Exit After Task'):
+                    if self._should_exit_after_task(task):
                         logger.info('Successfully Executed Task, Exiting Game and App!')
                         alert_info('Successfully Executed Task, Exiting Game and App!')
                         time.sleep(5)
                         self.device_manager.stop_hwnd()
                         time.sleep(5)
-                        communicate.quit.emit()
+                        communicate.emit_quit(self.exit_event)
                 task.running = False
                 self.current_task = None
                 if not is_trigger_task:
@@ -618,7 +629,13 @@ class TaskExecutor:
                     communicate.screenshot.emit(self.frame, name, True, None)
                 self.current_task = None
                 communicate.task.emit(None)
+                if not is_trigger_task and self._should_exit_after_task(task):
+                    logger.info(f'Failed Executing Task, Exiting App! task={name}')
+                    communicate.emit_quit(self.exit_event)
         self.destroy()
+
+    def _should_exit_after_task(self, task):
+        return bool(task.exit_after_task or task.config.get('Exit After Task'))
 
     def stop(self):
         logger.info('stop')

@@ -238,6 +238,7 @@ class App:
         self.overlay_window = None
         self.main_window = None
         self.exit_event = exit_event
+        self._quitting = False
         self.icon = QIcon(get_path_relative_to_exe(config.get('gui_icon')) or ":/icon/icon.ico")
 
         from ok.gui.StartController import StartController
@@ -272,9 +273,45 @@ class App:
         logger.debug('init app end')
 
     def quit(self):
-        self.exit_event.set()
-        from PySide6.QtCore import QMetaObject, Qt
-        QMetaObject.invokeMethod(self.app, "quit", Qt.QueuedConnection)
+        if self._quitting:
+            return
+        self._quitting = True
+        logger.info('app quit')
+        if self.exit_event:
+            self.exit_event.set()
+        executor_stopped = True
+        if og.executor:
+            try:
+                thread = og.executor.thread
+                if thread and thread.is_alive() and thread is not threading.current_thread():
+                    thread.join(timeout=3)
+                if thread and thread.is_alive():
+                    executor_stopped = False
+                    logger.warning('executor did not stop before shutdown timeout')
+                elif thread is None:
+                    og.executor.destroy()
+            except Exception as e:
+                logger.debug(f'executor shutdown failed: {e}')
+        ok_instance = getattr(og, 'ok', None)
+        if getattr(ok_instance, 'screenshot', None):
+            try:
+                ok_instance.screenshot.stop()
+            except Exception as e:
+                logger.debug(f'screenshot stop failed: {e}')
+        if og.device_manager and executor_stopped:
+            try:
+                og.device_manager.destroy()
+            except Exception as e:
+                logger.debug(f'device manager destroy failed: {e}')
+        if self.overlay_window:
+            try:
+                self.overlay_window.close()
+            except Exception as e:
+                logger.debug(f'overlay close failed: {e}')
+        if self.main_window and getattr(self.main_window, 'tray', None):
+            self.main_window.tray.hide()
+        from PySide6.QtCore import QCoreApplication
+        QCoreApplication.quit()
 
     def tr(self, key):
         from PySide6.QtCore import QCoreApplication
@@ -512,7 +549,7 @@ class OK:
         default_start_method = _resolve('WINDOWS_START_METHOD_START')
         wgc_available = _resolve('windows_graphics_available')
 
-        if config.get('check_mutex', True):
+        if sys.platform == 'win32' and config.get('check_mutex', True):
             check_mutex_fn()
         og.ok = self
         if pyappify.app_version:
@@ -558,11 +595,12 @@ class OK:
         try:
             import ctypes
             # Set DPI Awareness (Windows 10 and 8)
-            errorCode = ctypes.windll.shcore.SetProcessDpiAwareness(2)
-            logger.info(f'SetProcessDpiAwareness {errorCode}')
-            if self.debug:
-                import win32api
-                win32api.SetConsoleCtrlHandler(self.console_handler, True)
+            if sys.platform == 'win32':
+                errorCode = ctypes.windll.shcore.SetProcessDpiAwareness(2)
+                logger.info(f'SetProcessDpiAwareness {errorCode}')
+                if self.debug:
+                    import win32api
+                    win32api.SetConsoleCtrlHandler(self.console_handler, True)
         except Exception as e:
             logger.error(f'SetProcessDpiAwareness error', e)
         self.config = config
@@ -614,7 +652,7 @@ class OK:
                     try:
                         # Starting the task in a separate thread (optional)
                         # This allows the main thread to remain responsive to keyboard interrupts
-                        task_thread = threading.Thread(target=self.wait_task)
+                        task_thread = threading.Thread(target=self.wait_task, daemon=True)
                         task_thread.start()
 
                         # Wait for the task thread to end (which it won't, in this case, without an interrupt)
@@ -945,6 +983,9 @@ class OkGlobals:
     def set_use_dml(self):
         from ok.util.process import get_first_gpu_free_memory_mib
 
+        if sys.platform != 'win32':
+            self.use_dml = False
+            return
         use_dml_txt_option = self.global_config.get_config('Basic Options').get('Use DirectML')
         use_dml = False
         if use_dml_txt_option == 'Auto':
@@ -986,6 +1027,10 @@ class OkGlobals:
 
     def set_dpi_scaling(self, window):
         window_handle = window.windowHandle()
+        if window_handle is None:
+            self.dpi_scaling = 1.0
+            logger.debug('dpi_scaling: 1.0 (windowHandle is None)')
+            return
         screen = window_handle.screen()
         self.dpi_scaling = screen.devicePixelRatio()
         logger.debug('dpi_scaling: {}'.format(self.dpi_scaling))

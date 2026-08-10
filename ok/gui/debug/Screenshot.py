@@ -1,4 +1,5 @@
 import os
+import platform
 import queue
 import threading
 import time
@@ -14,7 +15,7 @@ from ok import Logger
 from ok.gui.Communicate import communicate
 from ok.util.blur import apply_blur_areas, get_blur_algorithm
 from ok.util.file import find_first_existing_file, clear_folder, sanitize_filename, \
-    get_relative_path
+    get_relative_path, _get_system_fonts_dir
 
 logger = Logger.get_logger(__name__)
 _CLEANUP_FOLDERS = object()
@@ -47,12 +48,14 @@ class Screenshot(QObject):
         if self.click_screenshot_folder is not None or self.screenshot_folder is not None:
             self.task_queue = queue.Queue()
             self.exit_event.bind_queue(self.task_queue)
-            self.thread = threading.Thread(target=self._worker, name="screenshot")
+            self.thread = threading.Thread(target=self._worker, name="screenshot", daemon=True)
             self.thread.start()
-            fonts_dir = os.path.join(os.environ['WINDIR'], 'Fonts')
+            fonts_dir = _get_system_fonts_dir()
             font = find_first_existing_file(
-                ['msyh.ttc', 'msyh.ttf', 'simsun.ttf', 'simsun.ttc', 'arial.ttf', 'arial.ttc'], fonts_dir)
-            if os.path.exists(font):
+                ['msyh.ttc', 'msyh.ttf', 'simsun.ttf', 'simsun.ttc', 'arial.ttf', 'arial.ttc',
+                 'DejaVuSans.ttf', 'DejaVuSans-Bold.ttf', 'LiberationSans-Regular.ttf',
+                 'NotoSansCJK-Regular.ttc', 'NotoSans-Regular.ttf'], fonts_dir)
+            if font and os.path.exists(font):
                 logger.debug(f"load font {font}")
                 self.pil_font = ImageFont.truetype(font, 30)
             else:

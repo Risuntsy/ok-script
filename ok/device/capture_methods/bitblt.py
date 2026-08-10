@@ -1,3 +1,7 @@
+import sys
+if sys.platform != 'win32':
+    raise ImportError(f"{__file__} is Windows-only")
+
 import threading
 
 from ok.util.color import is_close_to_pure_color

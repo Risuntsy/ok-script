@@ -58,13 +58,34 @@ _basic_options_default = {
     'Trigger Interval': 1,
     'Start/Stop': 'F9',
     KILL_LAUNCHER_AFTER_START: True,
-    'Launch with DX11': False
+    'Launch with DX11': False,
+    'Enable Operation Capture Log': False,
+    'Operation Capture Log Folder': 'operation_logs',
+    'Operation Capture Log Retention Days': 7,
+    'Operation Capture Log After Delay': 0.2
 }
 _basic_options_type = {'Use DirectML': {'type': "drop_down", 'options': ['Auto', 'Yes', 'No']},
                        'Start/Stop': {'type': "drop_down", 'options': ['None', 'F9', 'F10', 'F11', 'F12']}}
 _basic_options_description = {'Use DirectML': 'Use GPU to Improve Performance',
                               'Start/Stop': 'HotKey',
-                              'Trigger Interval': 'Increase Delay between Trigger Tasks to Reduce CPU/GPU Usage(Milliseconds)'}
+                              'Trigger Interval': 'Increase Delay between Trigger Tasks to Reduce CPU/GPU Usage(Milliseconds)',
+                              'Enable Operation Capture Log': 'Save before/after screenshots and metadata for task operations',
+                              'Operation Capture Log Folder': 'Folder used for operation capture sessions',
+                              'Operation Capture Log Retention Days': 'Delete operation capture sessions older than this many days',
+                              'Operation Capture Log After Delay': 'Seconds to wait before taking the after-operation screenshot'}
+
+import sys
+
+_linux_hidden_basic_options = {
+    'Launch with DX11',
+    'Use DirectML',
+    'Mute Game while in Background',
+    'Auto Start Game When App Starts',
+    'Exit App when Game Exits',
+    KILL_LAUNCHER_AFTER_START,
+    'Auto Resize Game Window',
+    'Start/Stop',
+}
 _blur_options_default = {'Enable Blur': False, 'Blur Algorithm': 'Inpaint', 'Blur Interval': 1}
 _blur_options_type = {
     'Enable Blur': {'sub_configs': {True: ['Blur Algorithm', 'Blur Interval']}},
@@ -82,6 +103,11 @@ def create_basic_options(enable_blur=False):
     default = dict(_basic_options_default)
     config_type = dict(_basic_options_type)
     description = dict(_basic_options_description)
+    if sys.platform == 'linux':
+        for key in _linux_hidden_basic_options:
+            default.pop(key, None)
+            config_type.pop(key, None)
+            description.pop(key, None)
     if enable_blur:
         default.update(_blur_options_default)
         config_type.update(_blur_options_type)
@@ -316,6 +342,8 @@ class AppLauncherConfig(dict):
 
 def create_app_launcher_options(pyappify_module, basic_config=None):
     """Return the launcher option and config only when the new API is usable."""
+    if sys.platform != 'win32':
+        return None
     get_path = getattr(pyappify_module, 'get_app_json_path', None)
     get_config = getattr(pyappify_module, 'get_app_config', None)
     update_config = getattr(pyappify_module, 'update_app_config', None)

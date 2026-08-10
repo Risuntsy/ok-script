@@ -1,4 +1,4 @@
-from PySide6.QtCore import Signal, QObject
+from PySide6.QtCore import QCoreApplication, Signal, QObject
 
 
 class Communicate(QObject):
@@ -32,6 +32,13 @@ class Communicate(QObject):
 
     def emit_draw_box(self, key: str = None, boxes=None, color=None, frame=None, debug=True):
         self.draw_box.emit(key, boxes, color, frame, debug)
+
+    def emit_quit(self, exit_event=None):
+        if QCoreApplication.instance() is None and exit_event is not None:
+            exit_event.set()
+            return False
+        self.quit.emit()
+        return True
 
 
 communicate = Communicate()

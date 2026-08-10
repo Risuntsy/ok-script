@@ -23,4 +23,4 @@ class TaskOpButton(QPushButton):
         if self.task.enabled:
             self.task.disable()
         else:
-            self.task.disable()
+            self.task.enable()
