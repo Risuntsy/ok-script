@@ -8,7 +8,10 @@ import re
 import subprocess
 import threading
 import time
-from ctypes import wintypes
+import sys
+
+if sys.platform == "win32":
+    from ctypes import wintypes
 
 import psutil
 
@@ -21,6 +24,8 @@ WINDOWS_START_METHOD_OS_STARTFILE = 'os.startfile'
 
 
 def is_admin():
+    if sys.platform != "win32":
+        return True
     try:
         # Only Windows users with admin privileges can read the C drive directly
         return ctypes.windll.shell32.IsUserAnAdmin()
@@ -30,7 +35,7 @@ def is_admin():
 
 def run_in_new_thread(func):
     # Create a new thread and run the function in it
-    thread = threading.Thread(target=func)
+    thread = threading.Thread(target=func, daemon=True)
 
     # Start the new thread
     thread.start()
@@ -39,7 +44,40 @@ def run_in_new_thread(func):
     return thread
 
 
+_linux_mutex_lock_file = None
+
 def check_mutex():
+    import sys
+    path = os.getcwd()
+    mutex_name = hashlib.md5(path.encode()).hexdigest()
+
+    if sys.platform != 'win32':
+        import fcntl
+        lock_file_path = f"/tmp/ok_mutex_{mutex_name}.lock"
+        lock_file = open(lock_file_path, 'w')
+        try:
+            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            global _linux_mutex_lock_file
+            _linux_mutex_lock_file = lock_file
+            logger.info(f'flock {mutex_name} acquired')
+            return True
+        except BlockingIOError:
+            logger.error(f'Another instance of this application is already running {mutex_name}. Waiting for it to disappear.')
+            print(f"Another instance of this application is already running. {mutex_name}")
+            wait_time = 10
+            start_time = time.time()
+            while time.time() - start_time < wait_time:
+                try:
+                    fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    _linux_mutex_lock_file = lock_file
+                    logger.info(f"Mutex {mutex_name} disappeared. Proceeding.")
+                    return True
+                except BlockingIOError:
+                    time.sleep(0.5)
+            logger.warning(f"Mutex {mutex_name} still exists after {wait_time} seconds. Attempting to kill existing process.")
+            kill_exe(os.path.abspath(os.getcwd()))
+            return False
+
     _LPSECURITY_ATTRIBUTES = wintypes.LPVOID
     _BOOL = ctypes.c_int
     _DWORD = ctypes.c_ulong
@@ -51,10 +89,8 @@ def check_mutex():
     _GetLastError.argtypes = []
     _GetLastError.restype = _DWORD
     _ERROR_ALREADY_EXISTS = 183
-    path = os.getcwd()
     # Try to create a named mutex
-    mutex_name = hashlib.md5(path.encode()).hexdigest()
-    mutex = _CreateMutex(0, False, mutex_name)
+    _CreateMutex(0, False, mutex_name)
     logger.info(f'_CreateMutex {mutex_name}')
     # Check if the mutex already exists
     if _GetLastError() == _ERROR_ALREADY_EXISTS:
@@ -85,14 +121,19 @@ def check_mutex():
 
 
 def restart_as_admin():
+    import sys
+    if sys.platform != 'win32':
+        return
     import ctypes
     if ctypes.windll.shell32.IsUserAnAdmin() == 0:
-        import sys
         ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 0)
         sys.exit()
 
 
 def all_pids() -> list[int]:
+    import sys
+    if sys.platform != 'win32':
+        return []
     pidbuffer = 512
     bytes_written = ctypes.c_uint32()
     while True:
@@ -173,11 +214,15 @@ def _split_game_command(game_cmd: str, game_path: str, arguments=None):
 
 
 def execute(game_cmd: str, arguments=None, start_method=WINDOWS_START_METHOD_START):
+    if sys.platform != 'win32':
+        logger.warning(f'execute not supported on linux: {game_cmd}')
+        return False
     if game_cmd:
         if '://' in game_cmd:
             try:
                 logger.info(f'try execute url {game_cmd}')
-                os.startfile(game_cmd)
+                from ok.util.file import open_in_explorer
+                open_in_explorer(game_cmd)
                 return True
             except Exception as e:
                 logger.error('execute error', e)
@@ -198,11 +243,11 @@ def execute(game_cmd: str, arguments=None, start_method=WINDOWS_START_METHOD_STA
                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                      creationflags=getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0))
                     return True
-
                 except Exception as e:
                     logger.error('execute error', e)
             else:
                 logger.error(f'execute error path not exist {game_path}')
+    return False
 
 
 def kill_exe(relative_path=None, abs_path=None):
@@ -320,12 +365,12 @@ def get_first_gpu_free_memory_mib():
     except (ValueError, IndexError) as e:
         # ValueError if output is not an integer
         # IndexError if output.splitlines() is empty
-        logger.error(f"Error parsing nvidia-smi output:", e)
+        logger.error("Error parsing nvidia-smi output:", e)
         # print(f"Raw output was: '{result.stdout}'", file=sys.stderr)
         return -1
     except Exception as e:
         # Catch any other unexpected errors
-        logger.error(f"An unexpected error occurred: ", e)
+        logger.error("An unexpected error occurred: ", e)
         return -1
 
 
@@ -398,7 +443,7 @@ def is_cuda_12_or_above():
         logger.info("nvidia-smi command not found. Ensure NVIDIA drivers are installed.")
         return False
     except Exception as e:
-        logger.error(f"nvidia-smi An error occurred:", e)
+        logger.error("nvidia-smi An error occurred:", e)
         return False
 
 
@@ -412,12 +457,15 @@ def create_shortcut(exe_path=None, shortcut_name_post=None, description=None, ta
         target_path:  Optional. The full path to the Start Menu location.
                           If None, uses the current user's Start Menu.
     """
+    if sys.platform != 'win32':
+        logger.warning('create_shortcut not supported on linux')
+        return False
     if not exe_path:
         cwd = os.getcwd()
         pattern = os.path.join(cwd, "ok*.exe")  # Construct the search pattern
 
         # Use glob to find files matching the pattern (case-insensitive)
-        matching_files = glob.glob(pattern.lower()) + glob.glob(pattern.upper())  # search both cases
+        glob.glob(pattern.lower()) + glob.glob(pattern.upper())  # search both cases
 
         for filename in glob.glob(pattern):
             exe_path = filename
@@ -459,11 +507,14 @@ def create_shortcut(exe_path=None, shortcut_name_post=None, description=None, ta
         logger.info(f"shortcut created at: {shortcut_path} {exe_path}")
 
     except Exception as e:
-        logger.error(f"Error creating shortcut:", e)
+        logger.error("Error creating shortcut:", e)
         return False
     return shortcut_path
 
 
 def prevent_sleeping(yes=True):
+    import sys
+    if sys.platform != "win32":
+        return
     # Prevent the system from sleeping
     ctypes.windll.kernel32.SetThreadExecutionState(0x80000002 if yes else 0x80000000)

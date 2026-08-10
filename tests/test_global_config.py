@@ -45,6 +45,11 @@ class TestBasicOptions(unittest.TestCase):
         self.assertEqual(['Blur', 'Inpaint'], options.config_type['Blur Algorithm']['options'])
         self.assertEqual(0, options.config_type['Blur Interval']['min'])
 
+    def test_operation_capture_is_disabled_by_default(self):
+        options = create_basic_options()
+
+        self.assertFalse(options.default_config['Enable Operation Capture Log'])
+
     def test_config_option_show_at_tab_defaults_to_false(self):
         option = ConfigOption('Custom Options')
 
@@ -167,6 +172,7 @@ class TestBasicOptions(unittest.TestCase):
 
             self.assertIsNone(create_app_launcher_options(pyappify_module))
 
+    @patch('ok.util.GlobalConfig.sys.platform', 'win32')
     def test_app_launcher_options_update_pyappify_config(self):
         with tempfile.TemporaryDirectory() as folder:
             config_path = os.path.join(folder, 'app.json')

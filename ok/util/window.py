@@ -7,15 +7,17 @@ import sys
 import time
 
 import psutil
-import win32api
-import win32con
-import win32gui
-import win32process
+
+if sys.platform == "win32":
+    import win32api
+    import win32con
+    import win32gui
+    import win32process
+    user32 = ctypes.WinDLL('user32', use_last_error=True)
 
 from ok.util.logger import Logger
 
 MDT_EFFECTIVE_DPI = 0
-user32 = ctypes.WinDLL('user32', use_last_error=True)
 DWMWA_EXTENDED_FRAME_BOUNDS = 9
 WGC_NO_BORDER_MIN_BUILD = 20348
 WGC_MIN_BUILD = 19041
@@ -384,8 +386,9 @@ def find_hwnd(title, exe_names, frame_width, frame_height, player_id=-1, class_n
         return True
 
     results = []
-    win32gui.EnumWindows(is_match, results)
-    # logger.debug(f'find_hwnd EnumWindows selected_hwnd {selected_hwnd} {results}')
+    if sys.platform == 'win32':
+        win32gui.EnumWindows(is_match, results)
+
     if not results:
         return None, 0, None, 0, 0, 0, 0, []
 
@@ -441,35 +444,37 @@ def find_hwnd(title, exe_names, frame_width, frame_height, player_id=-1, class_n
 
 def find_all_visible_windows():
     windows = []
-    
-    def callback(hwnd, extra):
-        if not win32gui.IsWindowVisible(hwnd):
-            return True
-            
-        exStyle = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
-        WS_EX_TOOLWINDOW = 0x00000080
-        if exStyle & WS_EX_TOOLWINDOW:
-            return True
-            
-        title = win32gui.GetWindowText(hwnd)
-        if not title or not str(title).strip():
-            return True
-            
-        try:
-            _, pid = win32process.GetWindowThreadProcessId(hwnd)
-            if pid <= 0:
+
+    if sys.platform == 'win32':
+        def callback(hwnd, extra):
+            if not win32gui.IsWindowVisible(hwnd):
                 return True
-            process = psutil.Process(pid)
-            exe_name = process.name()
-            exe_full_path = process.exe()
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+
+            exStyle = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
+            WS_EX_TOOLWINDOW = 0x00000080
+            if exStyle & WS_EX_TOOLWINDOW:
+                return True
+
+            title = win32gui.GetWindowText(hwnd)
+            if not title or not str(title).strip():
+                return True
+
+            try:
+                _, pid = win32process.GetWindowThreadProcessId(hwnd)
+                if pid <= 0:
+                    return True
+                process = psutil.Process(pid)
+                exe_name = process.name()
+                exe_full_path = process.exe()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                return True
+            except Exception:
+                exe_name = ""
+                exe_full_path = ""
+
+            windows.append((hwnd, title, exe_name, exe_full_path))
             return True
-        except Exception:
-            exe_name = ""
-            exe_full_path = ""
-            
-        windows.append((hwnd, title, exe_name, exe_full_path))
-        return True
-        
-    win32gui.EnumWindows(callback, None)
+
+        win32gui.EnumWindows(callback, None)
+
     return windows

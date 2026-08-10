@@ -2,6 +2,7 @@
 import ctypes
 import hashlib
 import platform
+import sys
 import uuid
 
 import psutil
@@ -27,7 +28,7 @@ class Analytics:
     @property
     def user_properties(self):
         if self._user_properties is None:
-            os_name_val = 'windows'
+            os_name_val = 'linux' if sys.platform != 'win32' else 'windows'
             os_version_val = "Unknown"
             os_build_val = 0
             cpu_name_val = "Unknown"
@@ -36,14 +37,15 @@ class Analytics:
 
             try:
                 # Get OS information
-                kernel_ver_str = platform.win32_ver()[1]
-                os_ver_intermediate = kernel_ver_str.split('.')[0]
-                os_build_val = int(kernel_ver_str.split('.')[-1])
+                if sys.platform == 'win32':
+                    kernel_ver_str = platform.win32_ver()[1]
+                    os_ver_intermediate = kernel_ver_str.split('.')[0]
+                    os_build_val = int(kernel_ver_str.split('.')[-1])
 
-                reported_os_version = os_ver_intermediate
-                if os_ver_intermediate == "10" and os_build_val >= 22000:
-                    reported_os_version = "11"
-                os_version_val = reported_os_version
+                    reported_os_version = os_ver_intermediate
+                    if os_ver_intermediate == "10" and os_build_val >= 22000:
+                        reported_os_version = "11"
+                    os_version_val = reported_os_version
             except Exception as e:
                 logger.error(f"Error getting OS info: {e}")
 
@@ -106,7 +108,7 @@ class Analytics:
             "app_name": self.app_config.get('app_id') or self.app_config.get('gui_title'),
             'locale': cfg.get(cfg.language).value.name(),
             'sr': get_screen_resolution(),
-            "os": 'windows',
+            "os": 'linux' if sys.platform != 'win32' else 'windows',
         }
 
         params.update(self.user_properties)
@@ -138,6 +140,8 @@ class Analytics:
 
 
 def get_screen_resolution():
+    if sys.platform != 'win32':
+        return "unknown"
     user32 = ctypes.windll.user32
     screensize = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
     return f"{screensize[0]}x{screensize[1]}"

@@ -1,4 +1,4 @@
-class TaskDisabledException(Exception):
+class TaskDisabledException(BaseException):
     pass
 
 
@@ -6,7 +6,7 @@ class CannotFindException(Exception):
     pass
 
 
-class FinishedException(Exception):
+class FinishedException(BaseException):
     pass
 
 

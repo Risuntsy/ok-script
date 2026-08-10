@@ -44,6 +44,11 @@ class SelectCaptureListView(ListWidget):
                 self.reduce_row_to_1()
                 self.item(0).setText(f"{title}")
                 selected = 0
+            elif device.get('device') == "wayland":
+                title = self.tr("Wlroots Capture")
+                self.reduce_row_to_1()
+                self.item(0).setText(f"{title}")
+                selected = 0
             elif device.get('emulator') is not None:
                 title = self.tr("ADB(Supports Background, Slow, High Compatibility, High Latency)")
                 self.reduce_row_to_1()

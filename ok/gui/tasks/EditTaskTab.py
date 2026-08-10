@@ -1,4 +1,5 @@
 import os
+import sys
 
 from PySide6.QtCore import QFileSystemWatcher, QUrl
 from PySide6.QtCore import Qt, QSize, QRect
@@ -322,11 +323,13 @@ class EditTaskTab(QWidget):
         self.run_button.clicked.connect(self.run_task)
         self.tools_layout.addWidget(self.run_button)
 
-        self.record_button = PushButton(self)
-        self.record_button.setText(self.tr("Record"))
-        self.record_button.setIcon(FluentIcon.CAMERA)
-        self.record_button.clicked.connect(self.toggle_record)
-        self.tools_layout.addWidget(self.record_button)
+        self.record_button = None
+        if sys.platform == 'win32':
+            self.record_button = PushButton(self)
+            self.record_button.setText(self.tr("Record"))
+            self.record_button.setIcon(FluentIcon.CAMERA)
+            self.record_button.clicked.connect(self.toggle_record)
+            self.tools_layout.addWidget(self.record_button)
         
         self.guide_button = PushButton(self)
         self.guide_button.setText(self.tr("Guide"))
@@ -565,6 +568,8 @@ class EditTaskTab(QWidget):
         QDesktopServices.openUrl(QUrl("https://github.com/ok-oldking/ok-py"))
 
     def toggle_record(self):
+        if sys.platform != 'win32':
+            return
         from .RecordScript import recorder
         from qfluentwidgets import MessageBoxBase, SubtitleLabel, BodyLabel, ComboBox, SpinBox
         
@@ -733,7 +738,7 @@ class EditTaskTab(QWidget):
                 new_lines.append(indentation + line.rstrip())
             new_lines.extend(lines[run_end:])
             
-            cursor = self.editor.textCursor()
+            self.editor.textCursor()
             v_scroll = self.editor.verticalScrollBar().value()
             
             self.editor.setPlainText("\n".join(new_lines))
