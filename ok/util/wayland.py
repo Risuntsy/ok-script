@@ -55,3 +55,35 @@ def wayland_socket_path(name: str | None = None) -> str:
 
 def compositor_name() -> str:
     return os.environ.get('XDG_CURRENT_DESKTOP', 'unknown')
+
+WUWA_TITLE_RE = re.compile(r'wuthering\s*waves|鸣潮|wu\s*wa', re.IGNORECASE)
+
+def is_wuwa_title(title: str) -> bool:
+    """True if a window title looks like the Wuthering Waves game window."""
+    return bool(title) and bool(WUWA_TITLE_RE.search(title))
+
+def select_preferred_socket(supported: list[dict]) -> str | None:
+    """
+    Pick which discovered Wayland socket should be auto-selected as the game session.
+
+    Priority:
+      1. Among sockets exposing a toplevel window titled like Wuthering Waves
+         ('Wuthering Waves', '鸣潮', 'Wuwa', 'Wu Wa', 'Wu wa'), the one with the
+         biggest socket id.
+      2. Otherwise, the socket with the biggest socket id overall.
+
+    `supported` is the list of dicts returned by
+    `WaylandConnection.list_supported_sockets()`, each expected to carry a
+    'socket_name' and a 'titles' list of toplevel window titles seen on it.
+    """
+    if not supported:
+        return None
+    def _num(socket_name: str) -> int:
+        m = re.search(r'(\d+)$', socket_name)
+        return int(m.group(1)) if m else -1
+    wuwa_matches = [
+        s for s in supported
+        if any(is_wuwa_title(t) for t in s.get('titles', []))
+    ]
+    pool = wuwa_matches or supported
+    return max(pool, key=lambda s: _num(s['socket_name']))['socket_name']

@@ -66,17 +66,20 @@ class WaylandConnection:
                 connection.connect(socket_name)
                 output = connection.outputs[0]
                 nick = "Wayland Desktop"
+                titles = []
                 for toplevel in connection.toplevels:
                     title = getattr(toplevel, 'title', '')
                     app_id = getattr(toplevel, 'app_id', '')
-                    if title or app_id:
+                    if title:
+                        titles.append(title)
+                    if (title or app_id) and nick == "Wayland Desktop":
                         nick = title or app_id
-                        break
                 supported.append({
                     'socket_name': socket_name,
                     'nick': nick,
                     'width': getattr(output, 'width', 1920) or 1920,
                     'height': getattr(output, 'height', 1080) or 1080,
+                    'titles': titles,
                 })
             except Exception as e:
                 logger.debug(

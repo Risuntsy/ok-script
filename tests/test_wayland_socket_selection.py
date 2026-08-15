@@ -7,6 +7,7 @@ import ok.device.DeviceManager as device_manager_module
 from ok.device.DeviceManager import DeviceManager
 from ok.device.capture_methods.wlroots import WlrootsCaptureMethod
 from ok.device.wlroots.connection import WaylandConnection
+from ok.util.wayland import is_wuwa_title, select_preferred_socket
 
 
 class FakeCapture:
@@ -104,6 +105,58 @@ class TestWaylandSocketSelection(unittest.TestCase):
         self.assertTrue(first_interaction.destroyed)
         self.assertEqual('wayland-0', manager.capture_method.socket_name)
         self.assertIs(manager.capture_method, manager.interaction.capture)
+
+    def test_is_wuwa_title_matches_expected_variants(self):
+        for title in ('Wuthering Waves', '鸣潮', 'Wuwa', 'Wu Wa', 'Wu wa', 'wuthering  waves - v2.1'):
+            self.assertTrue(is_wuwa_title(title), title)
+        for title in ('', 'Firefox', 'Steam', 'Wu'):
+            self.assertFalse(is_wuwa_title(title), title)
+
+    def test_select_preferred_socket_prefers_wuwa_title_with_biggest_id(self):
+        supported = [
+            {'socket_name': 'wayland-1', 'titles': ['Wuthering Waves']},
+            {'socket_name': 'wayland-3', 'titles': ['Some Other App']},
+            {'socket_name': 'wayland-4', 'titles': ['鸣潮']},
+        ]
+        self.assertEqual('wayland-4', select_preferred_socket(supported))
+
+    def test_select_preferred_socket_falls_back_to_max_socket_id(self):
+        supported = [
+            {'socket_name': 'wayland-1', 'titles': ['Firefox']},
+            {'socket_name': 'wayland-3', 'titles': []},
+            {'socket_name': 'wayland-2', 'titles': ['Steam']},
+        ]
+        self.assertEqual('wayland-3', select_preferred_socket(supported))
+
+    def test_update_wlroots_device_auto_selects_wuwa_socket(self):
+        manager = DeviceManager.__new__(DeviceManager)
+        manager.device_dict = {}
+        manager.config = {'preferred': ''}
+        supported = [
+            {'socket_name': 'wayland-3', 'nick': 'Desktop', 'width': 1920, 'height': 1080, 'titles': []},
+            {'socket_name': 'wayland-1', 'nick': 'Wuthering Waves', 'width': 2560, 'height': 1440,
+             'titles': ['Wuthering Waves']},
+        ]
+
+        with patch.object(WaylandConnection, 'list_supported_sockets', return_value=supported):
+            manager.update_wlroots_device()
+
+        self.assertEqual('wayland_wayland-1', manager.config['preferred'])
+
+    def test_update_wlroots_device_keeps_existing_valid_preference(self):
+        manager = DeviceManager.__new__(DeviceManager)
+        manager.device_dict = {}
+        manager.config = {'preferred': 'wayland_wayland-3'}
+        supported = [
+            {'socket_name': 'wayland-3', 'nick': 'Desktop', 'width': 1920, 'height': 1080, 'titles': []},
+            {'socket_name': 'wayland-1', 'nick': 'Wuthering Waves', 'width': 2560, 'height': 1440,
+             'titles': ['Wuthering Waves']},
+        ]
+
+        with patch.object(WaylandConnection, 'list_supported_sockets', return_value=supported):
+            manager.update_wlroots_device()
+
+        self.assertEqual('wayland_wayland-3', manager.config['preferred'])
 
     def test_capture_connects_to_explicit_socket(self):
         connection = SimpleNamespace(socket_name='wayland-3', connected=lambda: True)

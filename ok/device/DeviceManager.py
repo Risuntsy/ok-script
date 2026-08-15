@@ -296,11 +296,13 @@ class DeviceManager:
     def update_wlroots_device(self):
         try:
             from ok.device.wlroots.connection import WaylandConnection
+            from ok.util.wayland import select_preferred_socket
             keys_to_remove = [k for k in self.device_dict if k.startswith('wayland_')]
             for k in keys_to_remove:
                 del self.device_dict[k]
 
-            for socket_info in WaylandConnection.list_supported_sockets():
+            supported = WaylandConnection.list_supported_sockets()
+            for socket_info in supported:
                 socket_name = socket_info['socket_name']
                 out_w = socket_info['width']
                 out_h = socket_info['height']
@@ -319,6 +321,14 @@ class DeviceManager:
                 logger.info(
                     f"update_wlroots_device found {socket_name}: {nick} resolution: {wl_device['resolution']}")
                 self.device_dict[imei] = wl_device
+
+            config = getattr(self, 'config', None)
+            if supported and config is not None and config.get('preferred') not in self.device_dict:
+                best_socket = select_preferred_socket(supported)
+                if best_socket:
+                    best_imei = f"wayland_{best_socket}"
+                    logger.info(f'update_wlroots_device auto-selecting {best_imei} (Wuwa title priority)')
+                    config['preferred'] = best_imei
         except Exception as e:
             for device in self.device_dict.values():
                 if device.get("device") == "wayland":
