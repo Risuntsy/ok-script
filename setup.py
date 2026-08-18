@@ -1,7 +1,13 @@
 import os
+import sys
 import setuptools
 
 os.environ["PYTHONIOENCODING"] = "utf-8"
+
+# PEP 517 in-process builds exec() this file's source without adding its own
+# directory to sys.path, so the sibling get_pypi_latest_version module below
+# would otherwise fail to import.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 VERSION_NUM = os.environ.get('OK_SCRIPT_BUILD_VERSION')
 if VERSION_NUM:

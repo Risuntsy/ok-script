@@ -7,6 +7,9 @@ import struct
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
+import sys
+if sys.platform != 'win32':
+    raise ImportError("gpu_driver_settings is only supported on Windows")
 from ctypes import wintypes
 from typing import Callable, Iterable, List, Optional, Tuple
 

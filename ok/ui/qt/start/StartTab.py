@@ -1,4 +1,5 @@
 import os
+import sys
 import zipfile
 from pathlib import Path
 
@@ -45,7 +46,7 @@ class StartTab(Tab):
         self.add_widget(self.selector_widget, 1)
 
         self.device_search_box = None
-        if not config.get('windows') or not config.get('windows').get('exe'):
+        if sys.platform != 'linux' and (not config.get('windows') or not config.get('windows').get('exe')):
             self.device_search_box = SearchLineEdit()
             self.device_search_box.setPlaceholderText(self.tr("Search title or exe..."))
             self.device_search_box.textChanged.connect(self.filter_devices)
@@ -133,6 +134,8 @@ class StartTab(Tab):
                     methods = [methods]
                 if methods and i < len(methods):
                     og.device_manager.set_interaction(methods[i])
+            elif device.get('device') == 'wayland':
+                og.device_manager.set_interaction('Wlroots')
             self.start_card.update_status()
 
     def on_overlay_boxes_toggled(self, checked):
@@ -288,6 +291,8 @@ class StartTab(Tab):
                     og.device_manager.set_capture("windows")
             elif device.get('device') == 'browser':
                 og.device_manager.set_capture("browser")
+            elif device.get('device') == 'wayland':
+                og.device_manager.set_capture("wlroots")
             self.start_card.update_status()
 
     def device_index_changed(self):  # i is an index
@@ -320,6 +325,8 @@ class StartTab(Tab):
                 method = self.tr("Emulator")
             elif device['device'] == "browser":
                 method = self.tr("Browser")
+            elif device['device'] == "wayland":
+                method = self.tr("Wayland")
             else:
                 method = self.tr("Android")
             connected = self.tr("Connected") if device['connected'] else self.tr("Disconnected")

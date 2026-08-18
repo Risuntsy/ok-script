@@ -1,4 +1,5 @@
 import os
+import sys
 import threading
 
 import pyappify
@@ -327,6 +328,8 @@ class MainWindow(FluentWindow):
 
     def get_system_primary_theme_color(self):
         """Return a qfluent source color matching the Windows primary fill."""
+        if sys.platform != 'win32':
+            return None
         dark = isDarkTheme()
         try:
             from ok.rotypes.Windows.UI.ViewManagement import UIColorType, get_color_value
@@ -345,6 +348,8 @@ class MainWindow(FluentWindow):
         return QColor(red, green, blue)
 
     def _sync_system_accent_color(self, refresh=False):
+        if sys.platform != 'win32':
+            return False
         if qconfig.themeMode.value != Theme.AUTO:
             configured_color = getattr(self, '_configured_theme_color', None)
             if configured_color is None or qconfig.get(qconfig.themeColor) == configured_color:

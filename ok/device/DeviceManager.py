@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
@@ -10,6 +11,10 @@ from ok.device.capture import HwndWindow, BrowserCaptureMethod, update_capture_m
     ADBCaptureMethod
 from ok.device.interaction import PostMessageInteraction, GenshinInteraction, ForegroundPostMessageInteraction, \
     PynputInteraction, PyDirectInteraction, BrowserInteraction, ADBInteraction
+try:
+    from ok.device.capture_methods.wlroots import WlrootsCaptureMethod
+except Exception:
+    WlrootsCaptureMethod = None
 from ok.core.events import communicate
 from ok.util.collection import parse_ratio
 from ok.util.config import Config
@@ -77,11 +82,14 @@ class DeviceManager:
             if isinstance(self.windows_capture_config.get('exe'), str):
                 self.windows_capture_config['exe'] = [self.windows_capture_config.get('exe')]
 
-            self.hwnd_window = HwndWindow(exit_event, self.windows_capture_config.get('title'),
-                                          self.windows_capture_config.get('exe'),
-                                          hwnd_class=self.windows_capture_config.get('hwnd_class'),
-                                          global_config=self.global_config, device_manager=self,
-                                          top_hwnd_class=self.windows_capture_config.get('top_hwnd_class'))
+            if sys.platform == 'win32':
+                self.hwnd_window = HwndWindow(exit_event, self.windows_capture_config.get('title'),
+                                              self.windows_capture_config.get('exe'),
+                                              hwnd_class=self.windows_capture_config.get('hwnd_class'),
+                                              global_config=self.global_config, device_manager=self,
+                                              top_hwnd_class=self.windows_capture_config.get('top_hwnd_class'))
+            else:
+                self.hwnd_window = None
             interaction = self.windows_capture_config.get('interaction')
             if isinstance(interaction, list):
                 if interaction:
@@ -104,26 +112,37 @@ class DeviceManager:
                     if saved_interaction == item_name:
                         selected_interaction = interaction
 
-            if selected_interaction == 'PostMessage':
-                self.win_interaction_class = PostMessageInteraction
-            elif selected_interaction == 'Genshin':
-                self.win_interaction_class = GenshinInteraction
-            elif selected_interaction == 'ForegroundPostMessage':
-                self.win_interaction_class = ForegroundPostMessageInteraction
-            elif selected_interaction == 'Pynput':
-                self.win_interaction_class = PynputInteraction
-            elif selected_interaction == 'PyDirect':
-                self.win_interaction_class = PyDirectInteraction
-            elif selected_interaction:
-                self.win_interaction_class = selected_interaction
-            else:
-                self.win_interaction_class = PynputInteraction
+            if sys.platform == "linux":
+                try:
+                    from ok.device.interaction_methods.wlroots import WlrootsInteraction
+                    self.win_interaction_class = WlrootsInteraction
+                except Exception:
+                    pass
+
+            if sys.platform != "linux":
+                if selected_interaction == 'PostMessage':
+                    self.win_interaction_class = PostMessageInteraction
+                elif selected_interaction == 'Genshin':
+                    self.win_interaction_class = GenshinInteraction
+                elif selected_interaction == 'ForegroundPostMessage':
+                    self.win_interaction_class = ForegroundPostMessageInteraction
+                elif selected_interaction == 'Pynput':
+                    self.win_interaction_class = PynputInteraction
+                elif selected_interaction == 'PyDirect':
+                    self.win_interaction_class = PyDirectInteraction
+                elif selected_interaction:
+                    self.win_interaction_class = selected_interaction
+                else:
+                    self.win_interaction_class = PynputInteraction
         else:
             self.hwnd_window = None
 
         logger.info('__init__ end')
 
     def stop_hwnd(self):
+        if sys.platform == 'linux':
+            logger.info('stop_hwnd skipped on Linux')
+            return
         if self.hwnd_window:
             logger.info(f'stop_hwnd {self.hwnd_window.exe_full_path}')
             if self.hwnd_window.exe_full_path:
@@ -304,11 +323,57 @@ class DeviceManager:
                 "resolution": f"{width}x{height}"
             }
 
+    def update_wlroots_device(self):
+        try:
+            from ok.device.wlroots.connection import WaylandConnection
+            from ok.util.wayland import select_preferred_socket
+            keys_to_remove = [k for k in self.device_dict if k.startswith('wayland_')]
+            for k in keys_to_remove:
+                del self.device_dict[k]
+
+            supported = WaylandConnection.list_supported_sockets()
+            for socket_info in supported:
+                socket_name = socket_info['socket_name']
+                out_w = socket_info['width']
+                out_h = socket_info['height']
+                nick = f"{socket_info['nick']} ({socket_name})"
+                imei = f"wayland_{socket_name}"
+                wl_device = {
+                    "address": socket_name, "socket": socket_name,
+                    "imei": imei, "device": "wayland",
+                    "model": "", "nick": nick,
+                    "width": out_w, "height": out_h,
+                    "hwnd": nick, "capture": "wlroots",
+                    "connected": True, "full_path": "",
+                    "real_hwnd": 0, "exe": [],
+                    "resolution": f"{out_w}x{out_h}"
+                }
+                logger.info(
+                    f"update_wlroots_device found {socket_name}: {nick} resolution: {wl_device['resolution']}")
+                self.device_dict[imei] = wl_device
+
+            config = getattr(self, 'config', None)
+            if supported and config is not None and config.get('preferred') not in self.device_dict:
+                best_socket = select_preferred_socket(supported)
+                if best_socket:
+                    best_imei = f"wayland_{best_socket}"
+                    logger.info(f'update_wlroots_device auto-selecting {best_imei} (Wuwa title priority)')
+                    config['preferred'] = best_imei
+        except Exception as e:
+            for device in self.device_dict.values():
+                if device.get("device") == "wayland":
+                    device["connected"] = False
+            logger.error(f'update_wlroots_device error: {e}')
+
     def do_refresh(self, current=False):
         try:
-            self.refresh_emulators(current)
+            if sys.platform == "win32":
+                self.refresh_emulators(current)
             self.refresh_phones(current)
-            self.update_pc_device()
+            if sys.platform == "win32":
+                self.update_pc_device()
+            elif sys.platform == "linux":
+                self.update_wlroots_device()
             self.update_browser_device()
         except Exception as e:
             logger.error('refresh error', e)
@@ -549,6 +614,8 @@ class DeviceManager:
             return [method_name(item) for item in (methods or ['windows']) if item]
         if kind == 'browser':
             return ['browser']
+        if kind == 'wayland':
+            return ['wlroots']
         methods = ['adb']
         emulator = device.get('emulator')
         if emulator is not None:
@@ -573,6 +640,8 @@ class DeviceManager:
             return [method_name(item) for item in (methods or ['Pynput']) if item]
         if kind == 'browser':
             return ['BrowserInteraction']
+        if kind == 'wayland':
+            return ['Wlroots']
         if kind == 'adb':
             return ['ADBInteraction']
         return ['Default Interaction']
@@ -605,17 +674,25 @@ class DeviceManager:
 
         if self.config.get("interaction") != interaction_name:
             self.config['interaction'] = interaction_name
-            if interaction == 'PostMessage':
+
+            if sys.platform == "linux":
+                try:
+                    from ok.device.interaction_methods.wlroots import WlrootsInteraction
+                    self.win_interaction_class = WlrootsInteraction
+                except Exception:
+                    pass
+
+            if sys.platform != "linux" and interaction == 'PostMessage':
                 self.win_interaction_class = PostMessageInteraction
-            elif interaction == 'Genshin':
+            elif sys.platform != "linux" and interaction == 'Genshin':
                 self.win_interaction_class = GenshinInteraction
-            elif interaction == 'ForegroundPostMessage':
+            elif sys.platform != "linux" and interaction == 'ForegroundPostMessage':
                 self.win_interaction_class = ForegroundPostMessageInteraction
-            elif interaction == 'Pynput':
+            elif sys.platform != "linux" and interaction == 'Pynput':
                 self.win_interaction_class = PynputInteraction
-            elif interaction and interaction != 'PyDirect':
+            elif sys.platform != "linux" and interaction and interaction != 'PyDirect':
                 self.win_interaction_class = interaction
-            else:
+            elif sys.platform != "linux":
                 self.win_interaction_class = PyDirectInteraction
             self.start()
 
@@ -673,6 +750,39 @@ class DeviceManager:
             elif self.interaction:
                 self.interaction.capture = self.capture_method
             preferred['connected'] = self.capture_method is not None and self.capture_method.connected()
+        elif preferred['device'] == 'wayland':
+            if WlrootsCaptureMethod is None:
+                logger.error('Wlroots capture is unavailable; install pywayland on Linux')
+                preferred['connected'] = False
+                return
+            if getattr(self, 'win_interaction_class', None) is None:
+                from ok.device.interaction_methods.wlroots import WlrootsInteraction
+                self.win_interaction_class = WlrootsInteraction
+            socket_name = preferred.get('socket') or preferred.get('address')
+            socket_changed = (
+                isinstance(self.capture_method, WlrootsCaptureMethod)
+                and self.capture_method.socket_name != socket_name
+            )
+            if socket_changed:
+                if self.interaction is not None:
+                    self.interaction.on_destroy()
+                    self.interaction = None
+                self.capture_method.close()
+                self.capture_method = None
+            if not isinstance(self.capture_method, WlrootsCaptureMethod):
+                if self.capture_method is not None:
+                    self.capture_method.close()
+                self.capture_method = WlrootsCaptureMethod(socket_name=socket_name)
+            self.capture_method.exit_event = self.exit_event
+            if self.capture_method.start_or_stop():
+                logger.info('use Wlroots capture')
+            else:
+                logger.error('Wlroots capture failed to start')
+            if not isinstance(self.interaction, self.win_interaction_class):
+                self.interaction = self.win_interaction_class(self.capture_method, None)
+            elif self.interaction:
+                self.interaction.capture = self.capture_method
+            preferred['connected'] = self.capture_method is not None and self.capture_method.connected()
         elif preferred['device'] == 'browser':
             if not isinstance(self.capture_method, BrowserCaptureMethod):
                 if self.capture_method is not None:
@@ -687,12 +797,12 @@ class DeviceManager:
             preferred['connected'] = self.capture_method.connected()
         else:
             width, height = self.get_resolution()
-            if self.config.get('capture') == "windows":
+            if sys.platform == 'win32' and self.config.get('capture') == "windows":
                 self.ensure_hwnd(None, preferred.get('full_path'), width, height, preferred['player_id'])
                 logger.info(f'do_start use windows capture {self.hwnd_window.title}')
                 self.use_windows_capture()
             else:
-                if self.config.get('capture') == 'ipc':
+                if sys.platform == 'win32' and self.config.get('capture') == 'ipc':
                     if not isinstance(self.capture_method, NemuIpcCaptureMethod):
                         if self.capture_method is not None:
                             self.capture_method.close()
@@ -749,8 +859,29 @@ class DeviceManager:
 
     def adb_kill_server(self):
         if self.adb is not None:
-            self.adb.server_kill()
             logger.debug('adb kill_server')
+            self.adb.server_kill()
+
+    def destroy(self):
+        logger.info('DeviceManager destroy')
+        if self.interaction is not None:
+            try:
+                self.interaction.on_destroy()
+            except Exception as e:
+                logger.debug(f'interaction destroy failed: {e}')
+            self.interaction = None
+        if self.capture_method is not None:
+            try:
+                self.capture_method.close()
+            except Exception as e:
+                logger.debug(f'capture method close failed: {e}')
+            self.capture_method = None
+        if self.hwnd_window is not None:
+            try:
+                self.hwnd_window.stop()
+            except Exception as e:
+                logger.debug(f'hwnd_window stop failed: {e}')
+            self.hwnd_window = None
 
     @property
     def width(self):
@@ -825,6 +956,8 @@ class DeviceManager:
         if not path:
             return None
         elif emulator := device.get('emulator'):
+            if sys.platform != 'win32':
+                return None
             from ok.alas.platform_windows import get_emulator_exe
             return get_emulator_exe(emulator)
         else:
