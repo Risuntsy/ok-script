@@ -3,7 +3,12 @@ import os
 import re
 import threading
 
-import win32gui
+import sys
+
+if sys.platform == "win32":
+    import win32gui
+else:
+    win32gui = None
 
 from ok.core.events import communicate
 from ok.task.exceptions import CaptureException
@@ -11,8 +16,12 @@ from ok.util.logger import Logger
 from ok.util.window import resize_window, windows_graphics_available, find_hwnd
 
 from ok.device.capture_methods.base import BaseCaptureMethod
-from ok.device.capture_methods.bitblt_utils import get_crop_point
-from ok.device.capture_methods.windows_graphics import WindowsGraphicsCaptureMethod
+if sys.platform == "win32":
+    from ok.device.capture_methods.bitblt_utils import get_crop_point
+    from ok.device.capture_methods.windows_graphics import WindowsGraphicsCaptureMethod
+else:
+    get_crop_point = None
+    WindowsGraphicsCaptureMethod = None
 
 logger = Logger.get_logger(__name__)
 
@@ -175,7 +184,10 @@ class BrowserCaptureMethod(BaseCaptureMethod):
 
                     logger.info(
                         f"Browser window '{target_title}' found: {self.hwnd} offsets: {self.x_offset},{self.y_offset} size: {self._size}")
-                    self.wgc_capture = BrowserWGC(self)
+                    if sys.platform == "win32":
+                        self.wgc_capture = BrowserWGC(self)
+                    else:
+                        raise CaptureException("BrowserCaptureMethod frame capture requires Windows Graphics Capture, which is unavailable on this platform.")
                     break
             await asyncio.sleep(0.5)
 
@@ -306,43 +318,46 @@ class BrowserWindowAdapter:
 
 
 
-class BrowserWGC(WindowsGraphicsCaptureMethod):
+if sys.platform != "win32":
+    BrowserWGC = None
+else:
+    class BrowserWGC(WindowsGraphicsCaptureMethod):
 
-    def __init__(self, browser_method):
-        self.browser_method = browser_method
-        super().__init__(BrowserWindowAdapter(browser_method))
+        def __init__(self, browser_method):
+            self.browser_method = browser_method
+            super().__init__(BrowserWindowAdapter(browser_method))
 
-    def crop_image(self, frame):
-        if frame is None:
-            return None
+        def crop_image(self, frame):
+            if frame is None:
+                return None
 
-        fh, fw = frame.shape[:2]
-        target_w = int(getattr(self.hwnd_window, "width", 0) or 0)
-        target_h = int(getattr(self.hwnd_window, "height", 0) or 0)
-        if target_w <= 0 or target_h <= 0:
-            return frame
+            fh, fw = frame.shape[:2]
+            target_w = int(getattr(self.hwnd_window, "width", 0) or 0)
+            target_h = int(getattr(self.hwnd_window, "height", 0) or 0)
+            if target_w <= 0 or target_h <= 0:
+                return frame
 
-        x = int(getattr(self.browser_method, "x_offset", 0) or 0)
-        y = int(getattr(self.browser_method, "y_offset", 0) or 0)
+            x = int(getattr(self.browser_method, "x_offset", 0) or 0)
+            y = int(getattr(self.browser_method, "y_offset", 0) or 0)
 
-        if 0 <= x and 0 <= y and x + target_w <= fw and y + target_h <= fh:
-            left_extra = x
-            right_extra = fw - (x + target_w)
-            top_extra = y
-            bottom_extra = fh - (y + target_h)
-            if abs(left_extra - right_extra) <= 2 and abs(bottom_extra - left_extra) <= 2:
-                return frame[y:y + target_h, x:x + target_w]
+            if 0 <= x and 0 <= y and x + target_w <= fw and y + target_h <= fh:
+                left_extra = x
+                right_extra = fw - (x + target_w)
+                top_extra = y
+                bottom_extra = fh - (y + target_h)
+                if abs(left_extra - right_extra) <= 2 and abs(bottom_extra - left_extra) <= 2:
+                    return frame[y:y + target_h, x:x + target_w]
 
-        border, title_height = get_crop_point(fw, fh, target_w, target_h)
-        border = max(0, int(border))
-        title_height = max(0, int(title_height))
-        if border == 0 and title_height == 0:
-            return frame
+            border, title_height = get_crop_point(fw, fh, target_w, target_h)
+            border = max(0, int(border))
+            title_height = max(0, int(title_height))
+            if border == 0 and title_height == 0:
+                return frame
 
-        x1 = border
-        y1 = title_height
-        x2 = fw - border
-        y2 = fh - border
-        if x2 <= x1 or y2 <= y1:
-            return None
-        return frame[y1:y2, x1:x2]
+            x1 = border
+            y1 = title_height
+            x2 = fw - border
+            y2 = fh - border
+            if x2 <= x1 or y2 <= y1:
+                return None
+            return frame[y1:y2, x1:x2]

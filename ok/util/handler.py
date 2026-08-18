@@ -33,7 +33,10 @@ class ExitEvent(threading.Event):
             self.conditions.add(condition)
 
     def set(self):
+        already_set = self.is_set()
         super(ExitEvent, self).set()
+        if already_set:
+            return
         with self.bindings_lock:
             queues = tuple(self.queues)
             to_stops = tuple(self.to_stops)
@@ -64,7 +67,7 @@ class Handler:
         self.exit_event = event
         self.name = name
         self.exit_event.bind_stop(self)
-        self.thread = threading.Thread(target=self._process_tasks, name=name)
+        self.thread = threading.Thread(target=self._process_tasks, name=name, daemon=True)
         self.thread.start()
 
     def _process_tasks(self):
@@ -128,7 +131,7 @@ class Handler:
             return True
 
     def stop(self):
-        logger.info(f'handler stop raised exception {self.name}')
+        logger.info(f'handler stop requested {self.name}')
         with self.condition:
             self.task_queue.clear()
             heapq.heappush(self.task_queue, ScheduledTask(0, None))

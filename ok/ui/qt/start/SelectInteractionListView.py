@@ -42,6 +42,11 @@ class SelectInteractionListView(ListWidget):
                         if current_interaction == method_name:
                             selected = i
                             break
+            elif device['device'] == "wayland":
+                title = self.tr("WlrootsInteraction")
+                self.reduce_row_to_1()
+                self.item(0).setText(f"{title}")
+                selected = 0
             elif device['device'] == "adb":
                 title = self.tr("ADBInteraction")
                 self.reduce_row_to_1()

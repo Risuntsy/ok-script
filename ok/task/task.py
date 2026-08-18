@@ -10,7 +10,8 @@ from ok.core.icons import Icon
 from ok.feature.Box import find_boxes_by_name, find_boxes_within_boundary, Box, find_box_by_name, relative_box, \
     sort_boxes, find_highest_confidence_box
 from ok.feature.FeatureSet import adjust_coordinates, resize_image, scale_box, join_list_elements
-from ok.task.exceptions import HotkeyConfigException
+from ok.task.exceptions import HotkeyConfigException, WaitFailedException
+from ok.task.OperationCaptureLogger import OperationCaptureLogger
 from ok.util.color import calculate_color_percentage
 from ok.util.config import Config
 from ok.util.explorer import reveal_in_explorer
@@ -48,6 +49,7 @@ class ExecutorOperation:
         self.last_click_time = 0
         self.logger.debug(f'ExecutorOperation init {executor.scene}')
         self.scene = executor.scene
+        self.operation_capture_logger = OperationCaptureLogger(executor)
 
     def validate_key(self, key):
         if isinstance(key, int):
@@ -161,6 +163,9 @@ class ExecutorOperation:
             return self.click_relative(x, y, move_back=move_back, move=move, interval=interval, after_sleep=after_sleep,
                                        name=name, down_time=down_time, key=key, hcenter=hcenter, vcenter=vcenter)
         if not self.check_interval(interval):
+            self.operation_capture_logger.log_event(
+                'click', success=False, success_kind='interval_skipped',
+                x=x, y=y, key=key, name=name, interval=interval)
             self.executor.reset_scene()
             return False
         communicate.emit_draw_box(f"{key}_click",
@@ -171,6 +176,9 @@ class ExecutorOperation:
             self.logger.info(f'{key}_click {name} {x, y} after_sleep {after_sleep}')
         if after_sleep > 0:
             self.sleep(after_sleep)
+        self.operation_capture_logger.log_event(
+            'click', success=True, success_kind='sent', x=x, y=y, key=key, name=name,
+            move_back=move_back, move=move, down_time=down_time, after_sleep=after_sleep)
         self.executor.reset_scene()
         return True
 
@@ -204,6 +212,8 @@ class ExecutorOperation:
             return device.get('device') == 'browser'
 
     def mouse_down(self, x=-1, y=-1, name=None, key="left"):
+        self.operation_capture_logger.log_event('mouse_down', success=True, success_kind='sent',
+                                                x=x, y=y, name=name, key=key)
         frame = self.executor.nullable_frame()
         communicate.emit_draw_box("mouse_down",
                                   [Box(max(0, x - 10), max(0, y - 10), 20, 20, name="click", confidence=-1)], "green",
@@ -212,6 +222,7 @@ class ExecutorOperation:
         self.executor.interaction.mouse_down(x, y, name=name, key=key)
 
     def mouse_up(self, name=None, key="left"):
+        self.operation_capture_logger.log_event('mouse_up', success=True, success_kind='sent', name=name, key=key)
         communicate.emit_draw_box("mouse_up",
                                   self.box_of_screen(0.5, 0.5, width=0.01, height=0.01, name="mouse_up", confidence=-1),
                                   "green")
@@ -474,6 +485,8 @@ class ExecutorOperation:
         """
         key = self.validate_key(key)
         if not self.check_interval(interval):
+            self.operation_capture_logger.log_event(
+                'send_key', success=False, success_kind='interval_skipped', key=key, interval=interval)
             self.executor.reset_scene()
             return False
         communicate.emit_draw_box("send_key",
@@ -483,6 +496,9 @@ class ExecutorOperation:
         self.executor.interaction.send_key(key, down_time)
         if after_sleep > 0:
             self.sleep(after_sleep)
+        self.operation_capture_logger.log_event(
+            'send_key', success=True, success_kind='sent',
+            key=key, down_time=down_time, after_sleep=after_sleep)
         return True
 
     def get_global_config(self, option):

@@ -288,6 +288,7 @@ def _device_payload(device, preferred_id):
         "windows": "PC",
         "adb": "Android",
         "browser": "Browser",
+        "wayland": "Wayland",
     }.get(kind, kind.title() or "Device")
     connected = bool(device.get("connected"))
     state = "Connected" if connected else "Disconnected"
