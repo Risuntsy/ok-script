@@ -1,10 +1,15 @@
 import threading
 import time
 
-import win32api
-import win32con
-import win32gui
-import win32process
+import sys
+
+if sys.platform == "win32":
+    import win32api
+    import win32con
+    import win32gui
+    import win32process
+else:
+    win32api = win32con = win32gui = win32process = None
 
 from ok.core.events import communicate
 from ok.core.notifications import alert_info
@@ -13,7 +18,14 @@ from ok.util.logger import Logger
 from ok.util.window import show_title_bar, get_window_bounds, resize_window, is_foreground_window, find_hwnd
 
 from ok.device.capture_methods.base import BaseWindowsCaptureMethod
-from ok.device.capture_methods.bitblt_utils import get_crop_point
+
+if sys.platform == "win32":
+    from ok.device.capture_methods.bitblt_utils import get_crop_point
+else:
+    def get_crop_point(frame_width, frame_height, target_width, target_height):
+        x = round((frame_width - target_width) / 2)
+        y = (frame_height - target_height) - x
+        return x, y
 
 logger = Logger.get_logger(__name__)
 
@@ -68,8 +80,11 @@ class HwndWindow:
         self.global_config = global_config
         self.mute_option.validator = self.validate_mute_config
         self.update_window(title, exe_name, frame_width, frame_height, player_id, hwnd_class, top_hwnd_class)
-        self.thread = threading.Thread(target=self.update_window_size, name="update_window_size", daemon=True)
-        self.thread.start()
+        if sys.platform == 'win32':
+            self.thread = threading.Thread(target=self.update_window_size, name="update_window_size", daemon=True)
+            self.thread.start()
+        else:
+            self.thread = None
 
     def validate_mute_config(self, key, value):
         if key == 'Mute Game while in Background' and self.hwnd:
@@ -303,7 +318,7 @@ class HwndWindow:
                     if self.global_config.get_config('Basic Options').get(
                             'Exit App when Game Exits') and self.device_manager.executor is not None and self.device_manager.executor.pause():
                         alert_info('Auto exit because game exited', True)
-                        communicate.quit.emit()
+                        communicate.emit_quit(self.app_exit_event)
                     else:
                         communicate.notification.emit('Game Exited', None, True, True, None, None, None)
                     self.hwnd = 0
@@ -389,6 +404,8 @@ def check_pos(x, y, width, height, monitors_bounds):
 
 def get_monitors_bounds():
     monitors_bounds = []
+    if win32api is None:
+        return monitors_bounds
     monitors = win32api.EnumDisplayMonitors()
     for monitor in monitors:
         monitor_info = win32api.GetMonitorInfo(monitor[0])

@@ -1,5 +1,7 @@
 import time
-from ctypes import windll, wintypes
+import sys
+if sys.platform == 'win32':
+    from ctypes import windll, wintypes
 
 from PySide6.QtCore import Qt, Signal, QCoreApplication
 from PySide6.QtWidgets import QWidget, QFileDialog, QCompleter, QVBoxLayout, QHBoxLayout
@@ -110,20 +112,17 @@ class DebugTab(Tab):
         reveal_in_explorer(folder)
 
     def check_hotkey(self):
-        # Example event type, you should use the appropriate QEvent.Type for your case
-        msg = wintypes.MSG()
+        if sys.platform == 'win32':
+            msg = wintypes.MSG()
+            if windll.user32.PeekMessageW(byref(msg), None, 0, 0, 1):
+                if msg.message == 0x0312:  # WM_HOTKEY
+                    logger.debug(f'hotkey pressed {msg}')
+                    if msg.wParam == 1:
+                        logger.debug('dumping threads')
+                        dump_threads()
+                    elif msg.wParam == 2:
+                        self.handler.post(capture)
 
-        # PeekMessageW is used to check for a hotkey press
-        if windll.user32.PeekMessageW(byref(msg), None, 0, 0, 1):
-            if msg.message == 0x0312:  # WM_HOTKEY
-                logger.debug(f'hotkey pressed {msg}')
-                if msg.wParam == 1:
-                    logger.debug('dumping threads')
-                    dump_threads()
-                elif msg.wParam == 2:
-                    self.handler.post(capture)
-
-        # Repost the check_hotkey method to be called after 100 ms
         self.handler.post(self.check_hotkey, 0.1)
 
     def bind_hot_keys(self):
@@ -132,18 +131,20 @@ class DebugTab(Tab):
         VK_D = 0x44  # Virtual-Key code for 'D'
         VK_S = 0x53
 
-        if not windll.user32.RegisterHotKey(None, 1, MOD_ALT | MOD_CONTROL, VK_D):
-            logger.debug("Failed to register hotkey for Alt+Ctrl+D")
-        if not windll.user32.RegisterHotKey(None, 2, MOD_ALT | MOD_CONTROL, VK_S):
-            logger.debug("Failed to register hotkey for Alt+Ctrl+S")
+        if sys.platform == 'win32':
+            if not windll.user32.RegisterHotKey(None, 1, MOD_ALT | MOD_CONTROL, VK_D):
+                logger.debug("Failed to register hotkey for Alt+Ctrl+D")
+            if not windll.user32.RegisterHotKey(None, 2, MOD_ALT | MOD_CONTROL, VK_S):
+                logger.debug("Failed to register hotkey for Alt+Ctrl+S")
         logger.debug('bind_hot_keys')
 
     @staticmethod
     def unregister():
         # Unregister the hotkeys
         logger.debug('Unregister the hotkeys')
-        windll.user32.UnregisterHotKey(None, 1)
-        windll.user32.UnregisterHotKey(None, 2)
+        if sys.platform == 'win32':
+            windll.user32.UnregisterHotKey(None, 1)
+            windll.user32.UnregisterHotKey(None, 2)
 
     def call(self):
         func_name = self.target_function_edit.text()

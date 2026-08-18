@@ -3,10 +3,15 @@ import time
 from ok.util.logger import Logger
 from ok.util.window import windows_graphics_available
 
-from ok.device.capture_methods import bitblt
-from ok.device.capture_methods.bitblt import BitBltCaptureMethod, ForegroundBitBltCaptureMethod
-from ok.device.capture_methods.desktop_duplication import DesktopDuplicationCaptureMethod
-from ok.device.capture_methods.windows_graphics import WindowsGraphicsCaptureMethod
+import sys
+
+if sys.platform == "win32":
+    from ok.device.capture_methods import bitblt
+    from ok.device.capture_methods.bitblt import BitBltCaptureMethod, ForegroundBitBltCaptureMethod
+    from ok.device.capture_methods.desktop_duplication import DesktopDuplicationCaptureMethod
+    from ok.device.capture_methods.windows_graphics import WindowsGraphicsCaptureMethod
+else:
+    bitblt = BitBltCaptureMethod = ForegroundBitBltCaptureMethod = DesktopDuplicationCaptureMethod = WindowsGraphicsCaptureMethod = None
 
 logger = Logger.get_logger(__name__)
 
@@ -15,28 +20,41 @@ WGC_FIRST_FRAME_TIMEOUT = 1.5
 
 def update_capture_method(config, capture_method, hwnd, exit_event=None, selected_method=None):
     try:
-        method_preferences = config.get('capture_method', [])
+        from ok.device.config_defaults import get_default_capture_methods
+        method_preferences = config.get('capture_method')
+        if not method_preferences:
+            method_preferences = get_default_capture_methods()
+
         if selected_method and selected_method in method_preferences:
             method_preferences = [selected_method] + [m for m in method_preferences if m != selected_method]
 
         for method_name in method_preferences:
             if method_name == 'WGC':
-                if win_graphic := get_win_graphics_capture(capture_method, hwnd, exit_event):
-                    logger.info(f'use WGC capture')
+                if WindowsGraphicsCaptureMethod and (win_graphic := get_win_graphics_capture(capture_method, hwnd, exit_event)):
+                    logger.info('use WGC capture')
                     return win_graphic
             elif method_name in ('BitBlt', 'BitBlt_RenderFull'):
-                bitblt.render_full = (method_name == 'BitBlt_RenderFull')
-                logger.info(f'use {method_name} capture render_full: {bitblt.render_full}')
+                if bitblt is not None:
+                    bitblt.render_full = (method_name == 'BitBlt_RenderFull')
+                    logger.info(f'use {method_name} capture render_full: {bitblt.render_full}')
 
-                if bitblt_capture := get_capture(capture_method, BitBltCaptureMethod, hwnd, exit_event):
-                    return bitblt_capture
+                    if bitblt_capture := get_capture(capture_method, BitBltCaptureMethod, hwnd, exit_event):
+                        return bitblt_capture
             elif method_name in ('ForegroundBitBlt', 'Foreground BitBlt', 'Foreground', 'LosslessScaling', 'Lossless Scaling'):
-                if foreground_capture := get_capture(capture_method, ForegroundBitBltCaptureMethod, hwnd, exit_event):
-                    logger.info(f'use {method_name} capture')
-                    return foreground_capture
+                if ForegroundBitBltCaptureMethod is not None:
+                    if foreground_capture := get_capture(capture_method, ForegroundBitBltCaptureMethod, hwnd, exit_event):
+                        logger.info(f'use {method_name} capture')
+                        return foreground_capture
             elif method_name == 'DXGI':
-                if dxgi_capture := get_capture(capture_method, DesktopDuplicationCaptureMethod, hwnd, exit_event):
-                    return dxgi_capture
+                if DesktopDuplicationCaptureMethod is not None:
+                    if dxgi_capture := get_capture(capture_method, DesktopDuplicationCaptureMethod, hwnd, exit_event):
+                        return dxgi_capture
+            elif method_name == 'Wlroots':
+                from ok.device.capture_methods.wlroots import WlrootsCaptureMethod
+                if wlroots_capture := get_capture(capture_method, WlrootsCaptureMethod, hwnd, exit_event):
+                    if wlroots_capture.start_or_stop():
+                        logger.info('use Wlroots capture from method_preferences')
+                        return wlroots_capture
 
         return None
     except Exception as e:

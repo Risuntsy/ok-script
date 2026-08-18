@@ -1,3 +1,7 @@
+import sys
+if sys.platform != 'win32':
+    raise ImportError(f"{__file__} is Windows-only")
+
 import ctypes
 import threading
 import time

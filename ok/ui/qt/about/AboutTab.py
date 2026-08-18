@@ -7,6 +7,7 @@ from ok.ui.qt.about.VersionCard import VersionCard
 from ok.ui.qt.about.UpdateCard import ChangeLogView, UpdateCard
 from ok.ui.qt.util.app import get_localized_app_config
 from ok.ui.qt.util.pyappify_startup import get_startup_version_change
+from ok.util.pyappify_support import supports_update_check
 from ok.ui.qt.widget.Tab import Tab
 from ok.util.file import get_path_relative_to_exe
 from ok.util.logger import Logger
@@ -27,7 +28,7 @@ class AboutTab(Tab):
         self.add_widget(self.version_card)
 
         self.update_card = None
-        if callable(getattr(pyappify_module, 'get_version_list', None)):
+        if supports_update_check(pyappify_module):
             links = config.get('links') or {}
             self.update_card = UpdateCard(
                 config.get('version'), pyappify_module, self, exit_event=exit_event,
@@ -36,8 +37,9 @@ class AboutTab(Tab):
             self.add_card(self.tr("App update"), self.update_card)
         else:
             logger.warning(
-                "pyappify.get_version_list is unavailable; update controls are disabled. "
-                f"Loaded module: {getattr(pyappify_module, '__file__', type(pyappify_module).__name__)!r}"
+                "pyappify cannot check for updates; update controls are disabled. "
+                f"Loaded module: {getattr(pyappify_module, '__file__', type(pyappify_module).__name__)!r}, "
+                f"pyappify_version: {getattr(pyappify_module, 'pyappify_version', None)!r}"
             )
 
         if version_change := get_startup_version_change(pyappify_module):

@@ -20,6 +20,7 @@ from ok.core.events import EventMessage, communicate
 from ok.core.template_store import CocoTemplateStore
 from ok.task.web import WebTabConfig, call_task_tab_operation, task_tab_operations
 from ok.ui.web.requirements import WEB_REQUIREMENTS_MESSAGE, check_web_requirements
+from ok.util.pyappify_support import supports_update_check
 
 
 LOG_LINE_PATTERN = re.compile(
@@ -288,6 +289,7 @@ def _device_payload(device, preferred_id):
         "windows": "PC",
         "adb": "Android",
         "browser": "Browser",
+        "wayland": "Wayland",
     }.get(kind, kind.title() or "Device")
     connected = bool(device.get("connected"))
     state = "Connected" if connected else "Disconnected"
@@ -677,7 +679,7 @@ class WebRuntime:
             "about": str(self.ok.config.get("about") or ""),
             "links": {str(key): _json_value(value) for key, value in links.items()},
             "projects": [project for project in projects if project["url"].lower().rstrip("/") != current_github],
-            "update_supported": callable(getattr(self.pyappify_module, "get_version_list", None)),
+            "update_supported": supports_update_check(self.pyappify_module),
             "update_check_delay_ms": 10_000 if "PYAPPIFY_PYTHON_TEST" in os.environ else 30_000,
         }
 

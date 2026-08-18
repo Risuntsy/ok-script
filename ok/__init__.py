@@ -699,11 +699,12 @@ class OK:
         try:
             import ctypes
             # Set DPI Awareness (Windows 10 and 8)
-            errorCode = ctypes.windll.shcore.SetProcessDpiAwareness(2)
-            logger.info(f'SetProcessDpiAwareness {errorCode}')
-            if self.debug:
-                import win32api
-                win32api.SetConsoleCtrlHandler(self.console_handler, True)
+            if sys.platform == 'win32':
+                errorCode = ctypes.windll.shcore.SetProcessDpiAwareness(2)
+                logger.info(f'SetProcessDpiAwareness {errorCode}')
+                if self.debug:
+                    import win32api
+                    win32api.SetConsoleCtrlHandler(self.console_handler, True)
         except Exception as e:
             logger.error(f'SetProcessDpiAwareness error', e)
         self.config = config
@@ -1170,9 +1171,17 @@ class OkGlobals:
         return expire_date_str
 
     def set_dpi_scaling(self, window):
+        # windowHandle() is None until the native window is created; winId()
+        # forces creation immediately instead of waiting for show(). Some
+        # platform plugins (e.g. Wayland) never create it eagerly like win32
+        # does, so windowHandle()/screen() can still come back None here.
+        window.winId()
         window_handle = window.windowHandle()
-        screen = window_handle.screen()
-        self.dpi_scaling = screen.devicePixelRatio()
+        screen = window_handle.screen() if window_handle is not None else None
+        if screen is None:
+            from PySide6.QtGui import QGuiApplication
+            screen = QGuiApplication.primaryScreen()
+        self.dpi_scaling = screen.devicePixelRatio() if screen is not None else 1.0
         logger.debug('dpi_scaling: {}'.format(self.dpi_scaling))
 
 

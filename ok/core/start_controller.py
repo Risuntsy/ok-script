@@ -1,3 +1,4 @@
+import sys
 import time
 
 from ok import Handler, og
@@ -98,7 +99,8 @@ class StartController:
                     return False
             else:
                 logger.info('windows.start_exe is False, skip start_device')
-            self.check_gpu_driver_post_processing()
+            if sys.platform == 'win32':
+                self.check_gpu_driver_post_processing()
 
             def add_task_to_enable(enable_task):
                 if enable_task and enable_task not in tasks_to_enable:
@@ -179,6 +181,9 @@ class StartController:
         device = og.device_manager.get_preferred_device()
         logger.info(f'start_device: {device}')
 
+        if sys.platform == 'linux':
+            return True
+
         if device and not device['connected']:
             if device['device'] == "windows" and not is_admin():
                 communicate.starting_emulator.emit(True,
@@ -210,6 +215,8 @@ class StartController:
         return True
 
     def check_gpu_driver_post_processing(self):
+        if sys.platform != "win32":
+            return
         try:
             from ok.util.gpu_driver_settings import get_enabled_gpu_driver_post_processing
             device_manager = getattr(og, 'device_manager', None)

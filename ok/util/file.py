@@ -19,6 +19,24 @@ def read_json_file(file_path) -> dict | None:
     except json.JSONDecodeError:
         return None
 
+def open_in_explorer(path):
+    import subprocess, sys, os
+    if sys.platform == 'win32':
+        os.startfile(path)
+    elif sys.platform == 'darwin':
+        subprocess.Popen(['open', path])
+    else:
+        subprocess.Popen(['xdg-open', path])
+
+def show_in_explorer(path):
+    import subprocess, sys, os
+    if sys.platform == 'win32':
+        subprocess.Popen(['explorer', f'/select,{os.path.normpath(path)}'])
+    elif sys.platform == 'darwin':
+        subprocess.Popen(['open', '-R', path])
+    else:
+        subprocess.Popen(['xdg-open', os.path.dirname(os.path.abspath(path))])
+
 
 def write_json_file(file_path, data):
     ensure_dir_for_file(file_path)
@@ -246,6 +264,24 @@ def find_first_existing_file(filenames, directory):
         if os.path.isfile(full_path):
             return full_path
     return None
+
+
+def _get_system_fonts_dir():
+    if sys.platform == 'win32':
+        windir = os.environ.get('WINDIR')
+        if windir:
+            return os.path.join(windir, 'Fonts')
+        return ''
+    candidates = [
+        '/usr/share/fonts',
+        '/usr/local/share/fonts',
+        os.path.expanduser('~/.fonts'),
+        os.path.expanduser('~/.local/share/fonts'),
+    ]
+    for path in candidates:
+        if os.path.isdir(path):
+            return path
+    return ''
 
 
 def get_path_in_package(base, file):

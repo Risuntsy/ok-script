@@ -566,11 +566,13 @@ class TaskExecutor:
                         self.reset_scene()
                         continue
                 else:
-                    prevent_sleeping(True)
+                    if sys.platform == 'win32':
+                        prevent_sleeping(True)
                     logger.debug(f'start running onetime_task {task.name}')
                     task.run()
                     logger.debug(f'end running onetime_task {task.name}')
-                    prevent_sleeping(False)
+                    if sys.platform == 'win32':
+                        prevent_sleeping(False)
                     task.disable()
                     communicate.task_done.emit(task)
                     if task.exit_after_task or task.config.get('Exit After Task'):
@@ -579,7 +581,7 @@ class TaskExecutor:
                         time.sleep(5)
                         self.device_manager.stop_hwnd()
                         time.sleep(5)
-                        communicate.quit.emit()
+                        communicate.emit_quit(self.exit_event)
                 task.running = False
                 self.current_task = None
                 if not is_trigger_task:
@@ -620,6 +622,9 @@ class TaskExecutor:
                     communicate.screenshot.emit(self.frame, name, True, None)
                 self.current_task = None
                 communicate.task.emit(None)
+                if not is_trigger_task and (task.exit_after_task or task.config.get('Exit After Task')):
+                    logger.info(f'Failed Executing Task, Exiting App! task={name}')
+                    communicate.emit_quit(self.exit_event)
         self.destroy()
 
     def stop(self):

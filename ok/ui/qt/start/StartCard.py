@@ -1,7 +1,11 @@
-from ctypes import windll, wintypes
+try:
+    from ctypes import windll, wintypes
+    from _ctypes import byref
+    has_win32 = True
+except ImportError:
+    has_win32 = False
 
 from PySide6.QtCore import Qt, Signal
-from _ctypes import byref
 from qfluentwidgets import FluentIcon, PrimaryPushButton, SettingCard, PushButton
 
 from ok import Handler
@@ -120,16 +124,20 @@ class StartCard(SettingCard):
             self.current_hotkey = new_hotkey
             self.hotkey_changed.emit()
 
-        msg = wintypes.MSG()
-        if windll.user32.PeekMessageW(byref(msg), None, 0, 0, 1):
-            if msg.message == 0x0312:  # WM_HOTKEY
-                logger.debug(f'hotkey pressed {msg}')
-                if msg.wParam == 999:
-                    self.clicked()
+        if has_win32:
+            msg = wintypes.MSG()
+            if windll.user32.PeekMessageW(byref(msg), None, 0, 0, 1):
+                if msg.message == 0x0312:  # WM_HOTKEY
+                    logger.debug(f'hotkey pressed {msg}')
+                    if msg.wParam == 999:
+                        self.clicked()
 
         self.handler.post(self.check_hotkey, 0.1)
 
     def rebind_hotkey(self, hotkey):
+        if not has_win32:
+            logger.debug(f"Hotkey registration skipped on non-Windows: {hotkey}")
+            return
         windll.user32.UnregisterHotKey(None, 999)
         vk_map = {'F9': 0x78, 'F10': 0x79, 'F11': 0x7A, 'F12': 0x7B}
 

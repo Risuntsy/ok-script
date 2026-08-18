@@ -1,3 +1,7 @@
+import sys
+if sys.platform != 'win32':
+    raise ImportError(f"{__file__} is Windows-only")
+
 import ctypes
 import time
 
@@ -7,7 +11,7 @@ import win32gui
 
 from ok.device.capture_methods.base import BaseCaptureMethod
 from ok.device.interaction_methods.base import BaseInteraction
-from ok.device.interaction_methods.keys import vk_key_dict
+from ok.device.interaction_methods.win_keys import vk_key_dict
 from ok.device.interaction_methods.post_message import PostMessageInteraction
 from ok.util.logger import Logger
 
